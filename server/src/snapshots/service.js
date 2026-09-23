@@ -27,6 +27,7 @@ export function createSnapshotService(db, sources, log = console) {
       INSERT INTO snapshots (portfolio, date, currency, value) VALUES (?, ?, ?, ?)
       ON CONFLICT (portfolio, date, currency) DO UPDATE SET value = excluded.value`),
     series: db.prepare('SELECT date, currency, value FROM snapshots WHERE portfolio = ? ORDER BY date'),
+    exists: db.prepare('SELECT 1 FROM snapshots WHERE portfolio = ? AND date = ? LIMIT 1'),
   };
 
   // Records (or refreshes) today's snapshot. Running it many times a day is
@@ -46,6 +47,8 @@ export function createSnapshotService(db, sources, log = console) {
 
   return {
     capture,
+
+    has: (portfolio, date = localDate()) => Boolean(q.exists.get(portfolio, date)),
 
     async captureAll() {
       for (const p of PORTFOLIOS) await capture(p);

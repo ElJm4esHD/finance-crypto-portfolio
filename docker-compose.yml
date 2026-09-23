@@ -15,7 +15,6 @@ services:
       CRYPTO_PRICE_PROVIDER: binance
       MARKET_PRICE_PROVIDER: yahoo
       FX_PROVIDER: dolarapi
-      SNAPSHOT_INTERVAL_MINUTES: 60
       BACKUP_KEEP: 14
     volumes:
       # SQLite database + daily backups live here, outside the container.
