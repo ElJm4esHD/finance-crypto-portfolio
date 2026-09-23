@@ -101,36 +101,18 @@ El botón **Exportar** (arriba a la derecha en cada sección) descarga un CSV co
 
 La app es una PWA. En el celular se ve con barra de pestañas abajo y botón "+" flotante.
 
-Chrome solo la **instala como app** si se sirve por **HTTPS con un certificado válido**. Por `http://<ip>:<puerto>` solo crea un acceso directo que abre dentro de Chrome.
+Chrome solo la **instala como app** si se sirve por **HTTPS con un certificado válido**. Entrando por `http://<ip>:<puerto>`, o con el flag `unsafely-treat-insecure-origin-as-secure`, solo crea un acceso directo que abre dentro de Chrome. Para tener HTTPS sin exponer nada a internet se usa [Tailscale](https://tailscale.com):
 
-### HTTPS en la LAN con DuckDNS (sin abrir puertos)
-
-El servicio opcional `https` del compose (Caddy) saca un certificado de Let's Encrypt **validado por DNS**: escribe un registro TXT en DuckDNS y Let's Encrypt nunca se conecta al servidor. El dominio apunta a la **IP local** del servidor, así que desde internet no lleva a ningún lado. No hay que abrir ni redirigir puertos en el router. La app instalada funciona dentro de la red de casa.
-
-1. **IP fija del servidor.** Averiguala con `hostname -I` (por ejemplo `192.168.1.50`). Conviene reservarla en el DHCP del router para que no cambie; si cambia, hay que actualizarla en DuckDNS.
-2. **DuckDNS.** Entrá a https://www.duckdns.org, creá un subdominio (por ejemplo `micartera`), escribí la IP local en *current ip* y tocá *update ip*. Copiá el **token** que aparece arriba.
-3. **Puerto 443 libre.** `sudo ss -tlnp | grep ':443 '` no debe mostrar nada; si está ocupado, usá `HTTPS_PORT=8443`.
-4. **`.env`** al lado de `docker-compose.yml` (no se sube a git):
-   ```
-   PORT=8100
-   COMPOSE_PROFILES=https
-   DOMAIN=micartera.duckdns.org
-   DUCKDNS_TOKEN=el-token-de-duckdns
-   HTTPS_PORT=443
-   ```
-5. **Levantar:**
+1. En el servidor (una sola vez):
    ```bash
-   sudo mkdir -p /srv/finance-crypto-portfolio/caddy
-   docker compose up -d --build        # la primera vez compila Caddy: tarda unos minutos
-   docker compose logs -f https        # esperar "certificate obtained successfully", salir con Ctrl+C
+   curl -fsSL https://tailscale.com/install.sh | sh   # si no está instalado
+   sudo tailscale up
+   sudo tailscale serve --bg 8100                      # el puerto de PORT en .env
+   tailscale serve status                              # muestra la URL https://<servidor>.<tu-red>.ts.net
    ```
-6. **En el celular**, conectado al WiFi de casa: abrí `https://micartera.duckdns.org` (con `:8443` al final si cambiaste el puerto) → ⋮ → **Instalar app**.
-
-Si el celular da `DNS_PROBE_FINISHED_NXDOMAIN` estando en casa, el router bloquea los dominios que apuntan a IPs locales (protección *DNS rebinding*). Agregá el dominio como excepción en el router, o en el celular poné Ajustes → **DNS privado** → `dns.google`.
-
-### Alternativa: Tailscale
-
-`sudo tailscale serve --bg 8100` publica la app en `https://<servidor>.<tu-red>.ts.net`, que además funciona fuera de casa. Depende de que el celular resuelva los nombres `.ts.net` con el DNS de Tailscale, y en algunos Android eso no funciona.
+   Si pide habilitar HTTPS o MagicDNS, abrí el link que imprime y aceptá. La configuración sobrevive a reinicios.
+2. En el celular: instalá la app de Tailscale, entrá con la misma cuenta y dejala conectada.
+3. Abrí la URL `https://…ts.net` en Chrome → ⋮ → **Instalar app**.
 
 Si en el celular todo se ve chiquito "como en la compu", Chrome está pidiendo el sitio de escritorio. La app lo avisa; se desactiva en ⋮ → **Sitio de escritorio**.
 
