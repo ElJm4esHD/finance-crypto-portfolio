@@ -1,0 +1,11 @@
+.git
+**/node_modules
+server/public
+data
+*.db
+*.db-*
+*.log
+.env
+Dockerfile
+docker-compose.yml
+README.md

@@ -1,0 +1,29 @@
+services:
+  portfolio:
+    build: .
+    image: finance-crypto-portfolio:latest
+    container_name: finance-crypto-portfolio
+    restart: unless-stopped
+    # Must own the data directory on the host (see README).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      # LAN only: do not forward this port on the router.
+      - "${PORT:-8080}:8080"
+    environment:
+      TZ: America/Argentina/Buenos_Aires
+      # Price providers: "mock" until the real integrations are implemented
+      # (server/src/prices/). Then: CRYPTO_PRICE_PROVIDER=binance, MARKET_PRICE_PROVIDER=real
+      CRYPTO_PRICE_PROVIDER: mock
+      MARKET_PRICE_PROVIDER: mock
+      SNAPSHOT_INTERVAL_MINUTES: 60
+      BACKUP_KEEP: 14
+    volumes:
+      # SQLite database + daily backups live here, outside the container.
+      - ${DATA_PATH:-/srv/finance-crypto-portfolio/data}:/data
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
