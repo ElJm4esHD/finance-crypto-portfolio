@@ -17,9 +17,9 @@ const SECTIONS = {
     exportUrl: '/api/crypto/export.csv',
     Modal: ExchangeModal,
     tabs: [
-      { id: 'cartera', label: 'Cartera', View: CryptoHoldings },
-      { id: 'historial', label: 'Historial', View: CryptoExchanges },
-      { id: 'crecimiento', label: 'Crecimiento', View: CryptoGrowth },
+      { id: 'cartera', label: 'Cartera', icon: 'wallet', View: CryptoHoldings },
+      { id: 'historial', label: 'Historial', icon: 'list', View: CryptoExchanges },
+      { id: 'crecimiento', label: 'Crecimiento', icon: 'chart', View: CryptoGrowth },
     ],
   },
   cedears: {
@@ -28,12 +28,16 @@ const SECTIONS = {
     exportUrl: '/api/cedears/export.csv',
     Modal: OperationModal,
     tabs: [
-      { id: 'cartera', label: 'Cartera', View: CedearPortfolio },
-      { id: 'historial', label: 'Historial', View: CedearHistory },
-      { id: 'crecimiento', label: 'Crecimiento', View: CedearGrowth },
+      { id: 'cartera', label: 'Cartera', icon: 'wallet', View: CedearPortfolio },
+      { id: 'historial', label: 'Historial', icon: 'list', View: CedearHistory },
+      { id: 'crecimiento', label: 'Crecimiento', icon: 'chart', View: CedearGrowth },
     ],
   },
 };
+
+// A phone asking for the desktop site gets a ~980px layout viewport with tiny
+// text; the physical screen stays narrow, so the mismatch gives it away.
+const DESKTOP_MODE_ON_PHONE = Math.min(window.screen.width, window.screen.height) < 600 && window.innerWidth > 900;
 
 export function App() {
   const [version, setVersion] = useState(0);
@@ -47,8 +51,30 @@ export function App() {
   const { View } = tab;
   const openModal = () => setModalOpen(true);
 
+  const tabLinks = (className) =>
+    section.tabs.map((t) => (
+      <a href={`#/${sid}/${t.id}`} class={`${className} ${t.id === tab.id ? 'active' : ''}`} aria-current={t.id === tab.id ? 'page' : undefined}>
+        {className === 'bottom-tab' && <Icon name={t.icon} />}
+        <span>{t.label}</span>
+      </a>
+    ));
+
+  // Cartera + historial of this section in one CSV file.
+  const exportLink = (className, withLabel) => (
+    <a class={className} href={section.exportUrl} download title="Exportar cartera e historial a CSV" aria-label="Exportar a CSV">
+      <Icon name="download" />
+      {withLabel && <span>Exportar</span>}
+    </a>
+  );
+
   return (
     <DataVersion.Provider value={dataCtx}>
+      {DESKTOP_MODE_ON_PHONE && (
+        <p class="desktop-mode-notice">
+          Chrome está mostrando la versión de escritorio. Tocá ⋮ y desmarcá <strong>Sitio de escritorio</strong>.
+        </p>
+      )}
+
       <header class="topbar">
         <div class="container topbar-inner">
           <span class="brand">Mi cartera</span>
@@ -59,23 +85,18 @@ export function App() {
               </a>
             ))}
           </nav>
+          {exportLink('icon-btn phone-only', false)}
         </div>
       </header>
 
-      <div class="subbar">
+      {/* Desktop: tabs and actions under the header. */}
+      <div class="subbar desktop-only">
         <div class="container subbar-inner">
           <nav class="tabs" aria-label={section.label}>
-            {section.tabs.map((t) => (
-              <a href={`#/${sid}/${t.id}`} class={t.id === tab.id ? 'active' : ''} aria-current={t.id === tab.id ? 'page' : undefined}>
-                {t.label}
-              </a>
-            ))}
+            {tabLinks('tab')}
           </nav>
           <div class="subbar-actions">
-            {/* Cartera + historial of this section in one CSV file. */}
-            <a class="btn btn-secondary" href={section.exportUrl} download title="Exportar cartera e historial a CSV">
-              <Icon name="download" /> <span>Exportar</span>
-            </a>
+            {exportLink('btn btn-secondary', true)}
             <button type="button" class="btn btn-primary" onClick={openModal}>
               <Icon name="plus" /> <span>{section.action}</span>
             </button>
@@ -86,6 +107,14 @@ export function App() {
       <main class="container main" key={`${sid}/${tab.id}`}>
         <View onNew={openModal} onNewOperation={openModal} />
       </main>
+
+      {/* Phone: app-style bottom tab bar and floating action button. */}
+      <button type="button" class="fab phone-only" onClick={openModal} aria-label={section.action}>
+        <Icon name="plus" />
+      </button>
+      <nav class="bottom-nav phone-only" aria-label={section.label}>
+        {tabLinks('bottom-tab')}
+      </nav>
 
       {modalOpen && <section.Modal onClose={() => setModalOpen(false)} />}
     </DataVersion.Provider>

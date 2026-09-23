@@ -133,6 +133,9 @@ const ICONS = {
   alert: 'M12 8v5M12 16.5v.5M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z',
   arrow: 'M5 12h14M13 6l6 6-6 6',
   download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+  wallet: 'M4 7h14a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2V7zM4 7l11-3v3M16 13.5h.01',
+  list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
+  chart: 'M4 17l5-5 4 4 7-7M15 9h5v5',
 };
 
 export function Icon({ name }) {

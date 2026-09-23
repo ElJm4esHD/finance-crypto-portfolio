@@ -49,12 +49,13 @@
 
 /* ── Base ───────────────────────────────────────────────── */
 * { box-sizing: border-box; }
+html { font-size: 16px; }
 
 body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
-  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font: 1rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -270,19 +271,68 @@ input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px 
 }
 .chart-tooltip span { font-size: 0.8125rem; color: var(--ink-2); }
 
+/* Shown only when a phone renders the desktop site (see app.jsx). The page
+   is scaled down ~2.5× in that mode, hence the large type. */
+.desktop-mode-notice {
+  margin: 0; padding: 24px; background: var(--warn-soft); color: var(--ink);
+  font-size: 2.5rem; line-height: 1.3; text-align: center;
+}
+
+/* ── Phone-only pieces (bottom tab bar, floating button) ── */
+.bottom-nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex;
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.bottom-tab {
+  flex: 1; min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; font-size: 0.75rem; font-weight: 600; color: var(--ink-2);
+}
+.bottom-tab .icon { width: 24px; height: 24px; padding: 4px 18px; box-sizing: content-box; border-radius: 999px; }
+.bottom-tab.active { color: var(--ink); }
+.bottom-tab.active .icon { background: var(--accent-soft); color: var(--accent); }
+
+.fab {
+  position: fixed; z-index: 10; right: max(16px, env(safe-area-inset-right));
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  width: 60px; height: 60px; border: 0; border-radius: 18px; cursor: pointer;
+  display: grid; place-items: center; background: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+}
+.fab .icon { width: 28px; height: 28px; }
+
+@media (min-width: 641px) {
+  .phone-only { display: none !important; }
+}
+
 /* ── Phone layout ───────────────────────────────────────── */
 @media (max-width: 640px) {
+  html { font-size: 17px; }
+  .desktop-only { display: none !important; }
   .container { padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
-  .topbar-inner { padding-block: 10px; }
-  .section-switch { width: 100%; }
-  .section-switch a { flex: 1; text-align: center; padding-inline: 8px; }
-  .subbar-inner .btn span { display: none; } /* icon-only actions on phones */
-  .subbar-inner .btn { padding: 0; width: 40px; min-height: 40px; }
-  .subbar-actions { gap: 6px; }
-  .tabs a { padding-inline: 8px; }
+
+  /* Compact header: section switch + export. Tabs live in the bottom bar. */
+  .topbar { position: sticky; top: 0; z-index: 5; }
+  .topbar-inner { min-height: 0; padding-block: 10px; flex-wrap: nowrap; gap: 8px; }
+  .brand { display: none; }
+  .section-switch { flex: 1; }
+  .section-switch a { flex: 1; text-align: center; padding: 10px 8px; }
+
+  .main { padding-block: 20px calc(160px + env(safe-area-inset-bottom)); }
   .cash-grid { grid-template-columns: 1fr; }
-  .card { padding: 16px; }
-  .form-row { grid-template-columns: 1fr; }
+  .card { padding: 18px 16px; }
+  .card-title { font-size: 1.15rem; }
+  .btn { min-height: 48px; }
+  .btn-sm { min-height: 40px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .day-change { font-size: 1rem; }
+
+  /* Dialogs become bottom sheets, easy to reach with the thumb. */
+  .modal {
+    width: 100%; max-width: 100%; margin: auto 0 0; border-radius: 22px 22px 0 0;
+    max-height: calc(100dvh - 24px);
+  }
+  .modal-body { padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
 
   /* Tables become stacked cards: ticker and value on top, details below. */
   .table.responsive, .table.responsive tbody { display: block; }
@@ -293,12 +343,12 @@ input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px 
   }
   .table.responsive tr:has(td.actions) { padding-right: 44px; }
   .table.responsive tr:last-child { border-bottom: 0; }
-  .table.responsive td { border: 0; padding: 0; text-align: left; white-space: normal; font-size: 0.9375rem; }
-  .table.responsive td.ticker { grid-row: 1; grid-column: 1; font-size: 1.05rem; }
-  .table.responsive td.strong { grid-row: 1; grid-column: 2; text-align: right; font-size: 1.05rem; }
+  .table.responsive td { border: 0; padding: 0; text-align: left; white-space: normal; font-size: 1rem; }
+  .table.responsive td.ticker { grid-row: 1; grid-column: 1; font-size: 1.1rem; }
+  .table.responsive td.strong { grid-row: 1; grid-column: 2; text-align: right; font-size: 1.1rem; }
   .table.responsive td.num.strong[data-label]::before { content: none; }
   .table.responsive td.num[data-label]::before {
-    content: attr(data-label); display: block; color: var(--ink-3); font-weight: 400; font-size: 0.75rem;
+    content: attr(data-label); display: block; color: var(--ink-3); font-weight: 400; font-size: 0.8rem;
   }
   .table.responsive td.ticker + td { margin-top: 6px; }
   .table.responsive td.ticker + td + td { margin-top: 6px; }
