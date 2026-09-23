@@ -1,14 +1,19 @@
 import { useState } from 'preact/hooks';
 import { api } from '../api.js';
 import { fmtAmount, fmtMoney, fmtPrice, parseNumber, toInputValue } from '../format.js';
-import { useApi, useMutation } from '../hooks.js';
+import { useApi, useMutation, useStoredState } from '../hooks.js';
 import { DayChange, EmptyState, ErrorMessage, Field, Icon, Loading, Modal, PctChange, PriceNotice } from '../components/ui.jsx';
+import { convert, DisplayCurrency, MepNote, Money } from '../components/money.jsx';
 import { GoalProgress } from './GoalProgress.jsx';
+
+// Crypto is valued in USDT (1:1 with USD); ARS uses the dólar MEP of the day.
+const unit = (c) => (c === 'USD' ? 'USDT' : c);
 
 export function CryptoHoldings() {
   const { data, error, loading } = useApi('/crypto/holdings');
   const [editing, setEditing] = useState(null); // { asset, amount } | { asset: '' } for a new one
   const [showEmpty, setShowEmpty] = useState(false);
+  const [display, setDisplay] = useStoredState('display-currency:crypto', 'USD');
 
   if (loading) return <Loading />;
   if (!data) return <ErrorMessage>{error}</ErrorMessage>;
@@ -16,18 +21,28 @@ export function CryptoHoldings() {
   const withBalance = data.holdings.filter((h) => h.amount > 0);
   const empty = data.holdings.filter((h) => h.amount === 0);
   const rows = showEmpty ? [...withBalance, ...empty] : withBalance;
+  const rate = data.fx?.rate ?? null;
+  const heroCurrencies = !rate ? ['USD'] : display === 'both' ? ['USD', 'ARS'] : [display];
+  const cellDisplay = rate ? display : 'USD';
 
   return (
     <>
       <section class="hero">
         <p class="hero-label">
-          Valor total <PriceNotice source={data.priceSource.error ? null : data.priceSource} />
+          Valor total <PriceNotice source={data.priceSource} />
+          <DisplayCurrency value={display} onChange={setDisplay} />
         </p>
-        <p class="hero-value">{fmtMoney(data.total, 'USDT')}</p>
-        <DayChange change={data.dayChange} pct={data.dayChangePct} currency="USDT" />
+        <div class="hero-totals">
+          {heroCurrencies.map((c) => (
+            <div>
+              <p class="hero-value">{fmtMoney(convert(data.total, 'USDT', c, rate), unit(c))}</p>
+              <DayChange change={convert(data.dayChange, 'USDT', c, rate)} pct={data.dayChangePct} currency={unit(c)} />
+            </div>
+          ))}
+        </div>
+        {display !== 'USD' && <MepNote fx={data.fx} />}
         {data.goal && <GoalProgress total={data.total} goal={data.goal} compact />}
       </section>
-      {data.priceSource.error && <PriceNotice source={data.priceSource} />}
 
       <section class="card">
         <div class="card-head">
@@ -59,8 +74,12 @@ export function CryptoHoldings() {
                   <tr class={h.amount === 0 ? 'dimmed' : ''}>
                     <td class="ticker" data-label="Moneda">{h.asset}</td>
                     <td class="num" data-label="Cantidad">{fmtAmount(h.amount)}</td>
-                    <td class="num secondary" data-label="Precio">{h.amount > 0 ? fmtPrice(h.price, 'USDT') : '—'}</td>
-                    <td class="num strong" data-label="Valor">{h.value === null ? (h.amount > 0 ? 'Sin precio' : '—') : fmtMoney(h.value, 'USDT')}</td>
+                    <td class="num secondary" data-label="Precio">
+                      {h.amount > 0 ? (cellDisplay === 'ARS' ? fmtPrice(convert(h.price, 'USDT', 'ARS', rate), 'ARS') : fmtPrice(h.price, 'USDT')) : '—'}
+                    </td>
+                    <td class="num strong" data-label="Valor">
+                      {h.value === null ? (h.amount > 0 ? 'Sin precio' : '—') : <Money amount={h.value} currency="USDT" display={cellDisplay} rate={rate} />}
+                    </td>
                     <td class="num" data-label="Hoy">{h.amount > 0 ? <PctChange value={h.dayChangePct} /> : '—'}</td>
                     <td class="actions">
                       <button type="button" class="icon-btn" aria-label={`Corregir saldo de ${h.asset}`} title="Corregir saldo" onClick={() => setEditing(h)}>

@@ -93,3 +93,16 @@ export function nowLocalIso() {
 // Prefill value for editable number inputs: "0,00000012", no grouping, no exponent.
 export const toInputValue = (n) =>
   n == null ? '' : n.toLocaleString(LOCALE, { useGrouping: false, maximumFractionDigits: 12 });
+
+// Timestamp (ms or ISO) → "14:05" local time.
+export function fmtClock(t) {
+  const d = new Date(t);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Timestamp → "14:05" if it is from today, "22/09 14:05" otherwise.
+export function fmtStamp(t) {
+  const d = new Date(t);
+  const isToday = d.toDateString() === new Date().toDateString();
+  return isToday ? fmtClock(d) : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${fmtClock(d)}`;
+}

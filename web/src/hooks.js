@@ -66,3 +66,27 @@ export function useHashRoute() {
 export const navigate = (path) => {
   window.location.hash = `#/${path}`;
 };
+
+// useState remembered in this browser (e.g. the currency picked in each
+// section). Falls back to plain state when storage is not available.
+export function useStoredState(key, initial) {
+  const [value, setValue] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(key)) ?? initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = useCallback(
+    (v) => {
+      setValue(v);
+      try {
+        window.localStorage.setItem(key, JSON.stringify(v));
+      } catch {
+        // private mode or storage blocked: keep it for this visit only
+      }
+    },
+    [key],
+  );
+  return [value, set];
+}

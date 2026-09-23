@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { fmtPct, fmtSignedMoney } from '../format.js';
+import { fmtPct, fmtSignedMoney, fmtStamp } from '../format.js';
 
 export function Modal({ title, onClose, children }) {
   const ref = useRef(null);
@@ -69,19 +69,37 @@ export function ErrorMessage({ children }) {
   );
 }
 
-// Shown when prices are simulated or the provider failed.
+// Small badge next to a figure that could not be refreshed: the API did not
+// answer and the last valid value is shown. `since` is when it was obtained.
+export function StaleBadge({ since, title }) {
+  return (
+    <span class="pill" title={title ?? 'No se pudo actualizar: se muestra el último valor guardado.'}>
+      Precio desactualizado desde {fmtStamp(since)}
+    </span>
+  );
+}
+
+// Badge about where the prices come from: simulated, outdated or missing.
 export function PriceNotice({ source }) {
   if (!source) return null;
+  if (source.stale) {
+    return (
+      <StaleBadge
+        since={source.stale.since}
+        title={`${source.name} no responde (${source.error}). Se muestran los últimos precios guardados.`}
+      />
+    );
+  }
   if (source.error) {
     return (
-      <p class="notice notice-warn">
-        <Icon name="alert" /> No se pudieron obtener precios ({source.error}). Los valores pueden estar incompletos.
-      </p>
+      <span class="pill" title={`${source.name} no responde (${source.error}).`}>
+        Sin precios de {source.name}
+      </span>
     );
   }
   if (source.mock) {
     return (
-      <span class="pill" title="La conexión con la API de precios de mercado todavía no está hecha. Los precios son inventados para probar la app.">
+      <span class="pill" title="Los precios son inventados para probar la app (proveedor de precios en modo simulado).">
         Precios simulados
       </span>
     );
