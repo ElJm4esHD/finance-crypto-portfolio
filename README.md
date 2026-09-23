@@ -3,7 +3,9 @@
 App personal para seguir dos carteras independientes, pensada para correr en un servidor casero dentro de la LAN:
 
 - **Cripto**: saldos por moneda, historial de intercambios (lo que entregás → lo que recibís, con comisión opcional), un objetivo en USDT y el gráfico de crecimiento.
-- **CEDEARs / ETF**: compras y ventas con precio promedio ponderado, dinero disponible en USD y ARS, peso de cada posición, historial y gráfico de crecimiento.
+- **CEDEARs / ETF**: compras y ventas con precio promedio ponderado, dinero disponible en USD y ARS, peso de cada posición, historial y gráfico de crecimiento. Pesos y dólares se muestran por separado, sin tipo de cambio.
+
+Las dos secciones tienen las mismas pestañas (**Cartera**, **Historial**, **Crecimiento**), muestran la variación del día y se pueden **exportar a CSV**. La app se puede **instalar en el celular**.
 
 > **Pendiente:** la conexión con las APIs de precios de mercado (Binance para cripto y la que corresponda para CEDEARs/ETF). Mientras tanto la app usa **precios simulados** (la UI lo avisa con la etiqueta "Precios simulados"). Ver [Conectar las APIs de precios](#conectar-las-apis-de-precios).
 
@@ -30,6 +32,8 @@ docker compose up -d --build
 ```
 
 Después entrá desde cualquier dispositivo de la LAN a `http://<ip-del-servidor>:8080`.
+
+Si el puerto 8080 ya lo usa otra app: `docker compose down`, elegí uno libre (`sudo ss -tlnp | grep ':8100 '` no debe mostrar nada), `echo "PORT=8100" > .env` y `docker compose up -d`.
 
 Variables que se pueden cambiar con un archivo `.env` al lado de `docker-compose.yml`:
 
@@ -66,25 +70,44 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 - **Venta**: baja la cantidad (el promedio no cambia) y suma `cantidad × precio − comisión` al disponible. No se puede vender más de lo que se tiene.
 - Las posiciones vendidas por completo quedan visibles en 0 como "Cerrada".
 - Posiciones y dinero disponible se **recalculan desde el historial**, así que borrar una operación o un depósito deja todo consistente (si el borrado dejaría algo en negativo, se rechaza).
-- El **peso %** y el total se consolidan en USD usando el tipo de cambio USD/ARS que da el proveedor de precios. Sin precio de mercado, una posición se valúa a su costo.
+- **Sin tipo de cambio**: el total de la cartera se muestra en pesos y en dólares por separado (posiciones de esa moneda + disponible en esa moneda). Las posiciones se agrupan por moneda y el **peso %** es dentro de su moneda. Sin precio de mercado, una posición se valúa a su costo.
+
+### Variación del día
+- En **Cartera** se ve cuánto subió o bajó cada posición y la cartera completa desde el cierre anterior (en cripto, respecto de hace 24 h). Sale del `previousClose` que da el proveedor de precios: con los precios simulados ya se ve; con las APIs reales queda funcionando sin tocar nada más.
 
 ### Crecimiento (snapshots diarios)
 - Cada hora (`SNAPSHOT_INTERVAL_MINUTES`) y después de cada cambio se actualiza el valor **del día** de cada cartera; el último valor del día queda como su cierre. Al arrancar el servidor se toma uno a los pocos segundos, así que un reinicio no hace perder el día.
-- Cripto se guarda en USDT; CEDEARs/ETF en USD (posiciones + dinero disponible).
+- Cripto se guarda en USDT. CEDEARs/ETF guarda una serie por moneda (ARS y USD, cada una con posiciones + disponible) y el gráfico tiene un selector de moneda.
 - El gráfico muestra vista **Diaria** (últimos 90 días) y agrega **Semanal**, **Mensual** y **Anual** a medida que hay al menos dos períodos de historial.
 
 ## Conectar las APIs de precios
 
 Todo el acceso a precios pasa por **`server/src/prices/`**; el resto de la app no sabe de dónde vienen.
 
-1. Implementar el proveedor siguiendo el contrato documentado en `server/src/prices/index.js`:
-   - Cripto → `server/src/prices/binance.js` (`getUsdtPrices(assets)`).
-   - CEDEARs/ETF → `server/src/prices/market.js` (`getPrices(items)` y `getUsdArsRate()`).
+1. Implementar el proveedor siguiendo el contrato documentado en `server/src/prices/index.js`. Los dos devuelven cotizaciones `{ price, previousClose }` con `getQuotes(...)`:
+   - Cripto → `server/src/prices/binance.js` (precios en USDT; `previousClose` = precio de hace 24 h).
+   - CEDEARs/ETF → `server/src/prices/market.js` (precio en la moneda de la posición y cierre del día anterior).
    Ambos archivos tienen un `TODO(precios)` con la implementación sugerida.
 2. En `docker-compose.yml`: `CRYPTO_PRICE_PROVIDER: binance` y `MARKET_PRICE_PROVIDER: real`.
 3. `docker compose up -d --build`. La etiqueta "Precios simulados" desaparece sola.
 
 Si un proveedor falla, la app sigue funcionando: muestra un aviso, los valores sin precio aparecen como "Sin precio" y el snapshot del día no se actualiza hasta que vuelvan los precios.
+
+## Exportar a CSV
+
+El botón **Exportar** (arriba a la derecha en cada sección) descarga un CSV con la cartera y el historial completo de esa sección: `cripto-AAAA-MM-DD.csv` o `cedears-AAAA-MM-DD.csv`. Está pensado para pasárselo a Claude: bloques con título, números con punto decimal y sin separador de miles, y una línea que avisa si los precios son simulados.
+
+## Instalar en el celular
+
+La app es una PWA: desde Chrome en Android, menú ⋮ → **Instalar app**, y queda como una app más, a pantalla completa.
+
+Chrome solo ofrece instalar sitios servidos por **HTTPS** (o `localhost`). Entrando por `http://<ip>:<puerto>` desde la LAN, habilitalo en el celular una sola vez:
+
+1. En Chrome del celular abrí `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
+2. Escribí la dirección exacta de la app, por ejemplo `http://192.168.1.50:8100`, y poné el flag en **Enabled**.
+3. Tocá **Relaunch**, entrá a la app y usá ⋮ → **Instalar app**.
+
+La alternativa sin flags es servirla por HTTPS, por ejemplo con `tailscale serve`, que además permite usarla fuera de casa sin exponerla a internet.
 
 ## Desarrollo
 
@@ -117,10 +140,12 @@ El script de demo se niega a correr sobre una base que ya tiene datos.
 | DELETE | `/api/crypto/exchanges/:id` | Borrar (revierte saldos) |
 | PUT | `/api/crypto/goal` | `{ amount }` (null para quitarlo) |
 | GET | `/api/crypto/growth` | Series para el gráfico |
+| GET | `/api/crypto/export.csv` | Cartera + historial en CSV |
 | GET | `/api/cedears/portfolio` | Posiciones, disponible y totales |
 | GET/POST | `/api/cedears/operations` | Listar / registrar compra o venta |
 | DELETE | `/api/cedears/operations/:id` | Borrar operación |
 | GET/POST | `/api/cedears/cash-movements` | Listar / registrar depósito o retiro |
 | DELETE | `/api/cedears/cash-movements/:id` | Borrar movimiento |
-| GET | `/api/cedears/growth` | Series para el gráfico |
+| GET | `/api/cedears/growth` | Series para el gráfico (una por moneda) |
+| GET | `/api/cedears/export.csv` | Totales, cartera e historiales en CSV |
 | GET | `/api/health` | Healthcheck |
