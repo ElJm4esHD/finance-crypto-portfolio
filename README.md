@@ -99,15 +99,22 @@ El botón **Exportar** (arriba a la derecha en cada sección) descarga un CSV co
 
 ## Instalar en el celular
 
-La app es una PWA: desde Chrome en Android, menú ⋮ → **Instalar app**, y queda como una app más, a pantalla completa.
+La app es una PWA. En el celular se ve con barra de pestañas abajo y botón "+" flotante.
 
-Chrome solo ofrece instalar sitios servidos por **HTTPS** (o `localhost`). Entrando por `http://<ip>:<puerto>` desde la LAN, habilitalo en el celular una sola vez:
+Chrome solo la **instala como app** si se sirve por **HTTPS con un certificado válido**. Entrando por `http://<ip>:<puerto>`, o con el flag `unsafely-treat-insecure-origin-as-secure`, solo crea un acceso directo que abre dentro de Chrome. Para tener HTTPS sin exponer nada a internet se usa [Tailscale](https://tailscale.com):
 
-1. En Chrome del celular abrí `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
-2. Escribí la dirección exacta de la app, por ejemplo `http://192.168.1.50:8100`, y poné el flag en **Enabled**.
-3. Tocá **Relaunch**, entrá a la app y usá ⋮ → **Instalar app**.
+1. En el servidor (una sola vez):
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh   # si no está instalado
+   sudo tailscale up
+   sudo tailscale serve --bg 8100                      # el puerto de PORT en .env
+   tailscale serve status                              # muestra la URL https://<servidor>.<tu-red>.ts.net
+   ```
+   Si pide habilitar HTTPS o MagicDNS, abrí el link que imprime y aceptá. La configuración sobrevive a reinicios.
+2. En el celular: instalá la app de Tailscale, entrá con la misma cuenta y dejala conectada.
+3. Abrí la URL `https://…ts.net` en Chrome → ⋮ → **Instalar app**.
 
-La alternativa sin flags es servirla por HTTPS, por ejemplo con `tailscale serve`, que además permite usarla fuera de casa sin exponerla a internet.
+Si en el celular todo se ve chiquito "como en la compu", Chrome está pidiendo el sitio de escritorio. La app lo avisa; se desactiva en ⋮ → **Sitio de escritorio**.
 
 ## Desarrollo
 
