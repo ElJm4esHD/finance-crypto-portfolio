@@ -17,7 +17,7 @@ export function CryptoExchanges({ onNew }) {
 
   return (
     <section class="card">
-      <h2 class="card-title">Intercambios</h2>
+      <h2 class="card-title">Historial de intercambios</h2>
       <ErrorMessage>{deleteError}</ErrorMessage>
       {data.length === 0 ? (
         <EmptyState

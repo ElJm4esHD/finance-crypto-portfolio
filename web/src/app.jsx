@@ -14,16 +14,18 @@ const SECTIONS = {
   cripto: {
     label: 'Cripto',
     action: 'Nuevo intercambio',
+    exportUrl: '/api/crypto/export.csv',
     Modal: ExchangeModal,
     tabs: [
-      { id: 'holdings', label: 'Holdings', View: CryptoHoldings },
-      { id: 'intercambios', label: 'Intercambios', View: CryptoExchanges },
+      { id: 'cartera', label: 'Cartera', View: CryptoHoldings },
+      { id: 'historial', label: 'Historial', View: CryptoExchanges },
       { id: 'crecimiento', label: 'Crecimiento', View: CryptoGrowth },
     ],
   },
   cedears: {
     label: 'CEDEARs / ETF',
     action: 'Nueva operación',
+    exportUrl: '/api/cedears/export.csv',
     Modal: OperationModal,
     tabs: [
       { id: 'cartera', label: 'Cartera', View: CedearPortfolio },
@@ -69,9 +71,15 @@ export function App() {
               </a>
             ))}
           </nav>
-          <button type="button" class="btn btn-primary" onClick={openModal}>
-            <Icon name="plus" /> <span>{section.action}</span>
-          </button>
+          <div class="subbar-actions">
+            {/* Cartera + historial of this section in one CSV file. */}
+            <a class="btn btn-secondary" href={section.exportUrl} download title="Exportar cartera e historial a CSV">
+              <Icon name="download" /> <span>Exportar</span>
+            </a>
+            <button type="button" class="btn btn-primary" onClick={openModal}>
+              <Icon name="plus" /> <span>{section.action}</span>
+            </button>
+          </div>
         </div>
       </div>
 
