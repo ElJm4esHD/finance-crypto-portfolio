@@ -2,6 +2,7 @@ import { getSetting, setSetting } from '../db.js';
 import { UserError, NotFoundError } from '../lib/errors.js';
 import { fmt } from '../lib/format.js';
 import { clean, isNegative, EPSILON } from '../lib/num.js';
+import { dayChangeSummary } from '../lib/day-change.js';
 import { toDateTime, toNumber, toTicker } from '../lib/validate.js';
 
 const GOAL_KEY = 'crypto_goal_usdt';
@@ -51,30 +52,37 @@ export function createCryptoService(db, priceProvider) {
     return raw === null ? null : Number(raw);
   }
 
-  async function fetchPrices(assets) {
-    if (assets.length === 0) return { prices: {}, error: null };
+  async function fetchQuotes(assets) {
+    if (assets.length === 0) return { quotes: {}, error: null };
     try {
-      return { prices: await priceProvider.getUsdtPrices(assets), error: null };
+      return { quotes: await priceProvider.getQuotes(assets), error: null };
     } catch (err) {
-      return { prices: {}, error: err.message };
+      return { quotes: {}, error: err.message };
     }
   }
 
   return {
     async getHoldings() {
       const rows = q.holdings.all();
-      const { prices, error } = await fetchPrices(rows.filter((r) => r.amount > 0).map((r) => r.asset));
+      const { quotes, error } = await fetchQuotes(rows.filter((r) => r.amount > 0).map((r) => r.asset));
       let total = 0;
+      let dayChange = null;
       const holdings = rows.map((r) => {
-        const price = prices[r.asset] ?? null;
+        const quote = r.amount > 0 ? quotes[r.asset] : null;
+        const price = quote?.price ?? null;
         const value = price === null ? null : clean(r.amount * price);
         if (value !== null) total += value;
-        return { asset: r.asset, amount: r.amount, price, value };
+        const prev = quote?.previousClose ?? null;
+        const hasDay = price !== null && prev > 0;
+        if (hasDay) dayChange = (dayChange ?? 0) + r.amount * (price - prev);
+        return { asset: r.asset, amount: r.amount, price, value, dayChangePct: hasDay ? clean((price / prev - 1) * 100) : null };
       });
+      for (const h of holdings) h.weight = h.value !== null && total > 0 ? clean((h.value / total) * 100) : null;
       holdings.sort((a, b) => (b.value ?? -1) - (a.value ?? -1) || a.asset.localeCompare(b.asset));
       return {
         holdings,
         total: clean(total),
+        ...dayChangeSummary(total, dayChange),
         goal: getGoal(),
         priceSource: { name: priceProvider.name, mock: priceProvider.mock, error },
       };
@@ -120,7 +128,7 @@ export function createCryptoService(db, priceProvider) {
           exchangeDeltas(ex),
           (asset, have, need) =>
             `No alcanza el saldo de ${asset}: tenés ${fmt(have)} y este intercambio necesita ${fmt(need)}. ` +
-            'Si el saldo está mal, corregilo en Holdings.',
+            'Si el saldo está mal, corregilo en Cartera.',
         );
         const { lastInsertRowid } = q.insertExchange.run(ex);
         return q.exchange.get(lastInsertRowid);
@@ -136,7 +144,7 @@ export function createCryptoService(db, priceProvider) {
           exchangeDeltas(ex, -1),
           (asset, have, need) =>
             `No se puede borrar: revertirlo necesita ${fmt(need)} ${asset} y hoy tenés ${fmt(have)}. ` +
-            'Corregí el saldo en Holdings primero.',
+            'Corregí el saldo en Cartera primero.',
         );
         q.deleteExchange.run(id);
       })();
@@ -154,14 +162,14 @@ export function createCryptoService(db, priceProvider) {
       return amount;
     },
 
-    // Value recorded by the daily snapshot job. null → nothing to record yet.
-    async snapshotValue() {
+    // Values recorded by the daily snapshot job. [] → nothing to record yet.
+    async snapshotValues() {
       const rows = q.holdings.all().filter((r) => r.amount > 0);
-      if (rows.length === 0) return null;
-      const { prices, error } = await fetchPrices(rows.map((r) => r.asset));
+      if (rows.length === 0) return [];
+      const { quotes, error } = await fetchQuotes(rows.map((r) => r.asset));
       if (error) throw new Error(`precios cripto: ${error}`);
-      const value = rows.reduce((sum, r) => sum + (prices[r.asset] != null ? r.amount * prices[r.asset] : 0), 0);
-      return { value: clean(value), currency: 'USDT' };
+      const value = rows.reduce((sum, r) => sum + (quotes[r.asset] ? r.amount * quotes[r.asset].price : 0), 0);
+      return [{ value: clean(value), currency: 'USDT' }];
     },
   };
 }

@@ -1,6 +1,7 @@
 import { UserError, NotFoundError } from '../lib/errors.js';
 import { fmt } from '../lib/format.js';
 import { clean, isNegative } from '../lib/num.js';
+import { dayChangeSummary } from '../lib/day-change.js';
 import { oneOf, toDate, toNumber, toTicker } from '../lib/validate.js';
 import { marketKey } from '../prices/keys.js';
 
@@ -73,32 +74,29 @@ export function createCedearService(db, priceProvider) {
     }
   }
 
-  async function fetchMarket(open) {
-    const result = { prices: {}, fx: null, error: null };
+  async function fetchQuotes(open) {
+    if (open.length === 0) return { quotes: {}, error: null };
     try {
-      result.fx = await priceProvider.getUsdArsRate();
-      if (open.length > 0) {
-        result.prices = await priceProvider.getPrices(
-          open.map(({ ticker, currency, avgPrice }) => ({ ticker, currency, avgPrice })),
-        );
-      }
+      const quotes = await priceProvider.getQuotes(open.map(({ ticker, currency, avgPrice }) => ({ ticker, currency, avgPrice })));
+      return { quotes, error: null };
     } catch (err) {
-      result.error = err.message;
+      return { quotes: {}, error: err.message };
     }
-    return result;
   }
 
-  const toUsd = (amount, currency, fx) => (currency === 'USD' ? amount : fx ? amount / fx : null);
-
+  // Positions valued at market price (or at cost while there is no price).
+  // No exchange rate: every figure stays in its own currency, and weights are
+  // the share of each position within the positions of its currency.
   async function valuate() {
     const movements = q.movements.all();
     const { positions, cash } = computeState(q.operations.all(), movements);
     const all = [...positions.values()];
-    const open = all.filter((p) => p.quantity > 0);
-    const { prices, fx, error } = await fetchMarket(open);
+    const { quotes, error } = await fetchQuotes(all.filter((p) => p.quantity > 0));
 
     const rows = all.map((p) => {
-      const price = p.quantity > 0 ? prices[marketKey(p.ticker, p.currency)] ?? null : null;
+      const quote = p.quantity > 0 ? quotes[marketKey(p.ticker, p.currency)] : null;
+      const price = quote?.price ?? null;
+      const prev = quote?.previousClose ?? null;
       const cost = clean(p.quantity * p.avgPrice);
       const value = price === null ? null : clean(p.quantity * price);
       return {
@@ -108,30 +106,37 @@ export function createCedearService(db, priceProvider) {
         value,
         pnl: value === null ? null : clean(value - cost),
         pnlPct: price === null || p.avgPrice === 0 ? null : clean((price / p.avgPrice - 1) * 100),
-        // Weight uses market value, or cost while there is no price.
-        weightBaseUsd: toUsd(value ?? cost, p.currency, fx),
+        dayChange: price !== null && prev > 0 ? clean(p.quantity * (price - prev)) : null,
+        dayChangePct: price !== null && prev > 0 ? clean((price / prev - 1) * 100) : null,
       };
     });
 
-    const positionsUsd = rows.reduce((s, r) => s + (r.weightBaseUsd ?? 0), 0);
-    for (const r of rows) {
-      r.weight = positionsUsd > 0 && r.weightBaseUsd !== null ? clean((r.weightBaseUsd / positionsUsd) * 100) : null;
-      delete r.weightBaseUsd;
+    const totals = {};
+    for (const c of CURRENCIES) {
+      const inCurrency = rows.filter((r) => r.currency === c);
+      const positionsValue = inCurrency.reduce((s, r) => s + (r.value ?? r.cost), 0);
+      for (const r of inCurrency) {
+        r.weight = positionsValue > 0 ? clean(((r.value ?? r.cost) / positionsValue) * 100) : 0;
+      }
+      const withDay = inCurrency.filter((r) => r.dayChange !== null);
+      const total = positionsValue + cash[c];
+      totals[c] = {
+        positions: clean(positionsValue),
+        cash: cash[c],
+        total: clean(total),
+        ...dayChangeSummary(total, withDay.length ? withDay.reduce((s, r) => s + r.dayChange, 0) : null),
+        // Shown only for currencies the user actually uses.
+        used: inCurrency.length > 0 || movements.some((m) => m.currency === c),
+      };
     }
-    rows.sort((a, b) => (b.quantity > 0) - (a.quantity > 0) || (b.weight ?? 0) - (a.weight ?? 0) || a.ticker.localeCompare(b.ticker));
 
-    const cashUsd = toUsd(cash.USD, 'USD', fx) + (toUsd(cash.ARS, 'ARS', fx) ?? 0);
+    rows.sort((a, b) => (b.quantity > 0) - (a.quantity > 0) || b.weight - a.weight || a.ticker.localeCompare(b.ticker));
+
     return {
       positions: rows,
       cash,
-      fx,
-      totals: {
-        positionsUsd: clean(positionsUsd),
-        cashUsd: clean(cashUsd),
-        totalUsd: clean(positionsUsd + cashUsd),
-      },
+      totals,
       priceSource: { name: priceProvider.name, mock: priceProvider.mock, error },
-      hasData: all.length > 0 || movements.length > 0,
     };
   }
 
@@ -221,12 +226,12 @@ export function createCedearService(db, priceProvider) {
       })();
     },
 
-    // Value recorded by the daily snapshot job (USD). null → nothing to record yet.
-    async snapshotValue() {
+    // Values recorded by the daily snapshot job: one per currency in use
+    // (positions + available cash). [] → nothing to record yet.
+    async snapshotValues() {
       const p = await valuate();
-      if (!p.hasData) return null;
       if (p.priceSource.error) throw new Error(`precios CEDEARs/ETF: ${p.priceSource.error}`);
-      return { value: p.totals.totalUsd, currency: 'USD' };
+      return CURRENCIES.filter((c) => p.totals[c].used).map((c) => ({ value: p.totals[c].total, currency: c }));
     },
   };
 }

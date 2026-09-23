@@ -70,10 +70,8 @@ function backfill(portfolio, endValue, days, currency, drift) {
   });
 }
 
-const cryptoNow = await crypto.snapshotValue();
-const cedearsNow = await cedears.snapshotValue();
-backfill('crypto', cryptoNow.value, 430, 'USDT', 0.0012);
-backfill('cedears', cedearsNow.value, 115, 'USD', 0.0008);
+for (const { value, currency } of await crypto.snapshotValues()) backfill('crypto', value, 430, currency, 0.0012);
+for (const { value, currency } of await cedears.snapshotValues()) backfill('cedears', value, 115, currency, 0.0008);
 await snapshots.captureAll();
 
 console.log(`Datos de demo cargados en ${file}`);

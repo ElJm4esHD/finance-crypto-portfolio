@@ -1,4 +1,4 @@
-import { dailyDrift, hash } from './mock-util.js';
+import { dailyDrift, hash, yesterday } from './mock-util.js';
 
 // MOCK — precios inventados para poder usar la app sin API. Reemplazar por ./binance.js.
 const STABLECOINS = new Set(['USDT', 'USDC', 'DAI', 'FDUSD', 'TUSD', 'BUSD', 'USDP', 'PYUSD']);
@@ -12,14 +12,14 @@ const BASE_USDT = {
 export const mockCryptoProvider = {
   name: 'Simulado',
   mock: true,
-  async getUsdtPrices(assets) {
+  async getQuotes(assets) {
     const out = {};
     for (const asset of assets) {
       if (STABLECOINS.has(asset)) {
-        out[asset] = 1;
+        out[asset] = { price: 1, previousClose: 1 };
       } else {
         const base = BASE_USDT[asset] ?? 0.05 + hash(asset) * 50;
-        out[asset] = base * dailyDrift(asset);
+        out[asset] = { price: base * dailyDrift(asset), previousClose: base * dailyDrift(asset, yesterday()) };
       }
     }
     return out;

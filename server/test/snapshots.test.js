@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openDb } from '../src/db.js';
+import Database from 'better-sqlite3';
+import { MIGRATIONS, migrate, openDb } from '../src/db.js';
 import { aggregate, createSnapshotService } from '../src/snapshots/service.js';
 
 const silent = { warn() {} };
@@ -22,32 +23,56 @@ test('aggregation keeps the last value of each period', () => {
 test('capturing twice on the same day overwrites the value', async () => {
   let value = 100;
   const svc = createSnapshotService(openDb(':memory:'), {
-    crypto: { snapshotValue: async () => ({ value, currency: 'USDT' }) },
-    cedears: { snapshotValue: async () => null },
+    crypto: { snapshotValues: async () => [{ value, currency: 'USDT' }] },
+    cedears: { snapshotValues: async () => [] },
   }, silent);
   await svc.capture('crypto', '2026-09-01');
   value = 120;
   await svc.capture('crypto', '2026-09-01');
   await svc.capture('cedears', '2026-09-01'); // nothing to record
-  const growth = svc.getGrowth('crypto');
-  assert.deepEqual(growth.series.daily, [{ date: '2026-09-01', value: 120 }]);
-  assert.equal(growth.currency, 'USDT');
-  assert.deepEqual(growth.available, ['daily']);
-  assert.deepEqual(svc.getGrowth('cedears').available, []);
+  const [usdt] = svc.getGrowth('crypto').currencies;
+  assert.equal(usdt.currency, 'USDT');
+  assert.deepEqual(usdt.series.daily, [{ date: '2026-09-01', value: 120 }]);
+  assert.deepEqual(usdt.available, ['daily']);
+  assert.deepEqual(svc.getGrowth('cedears').currencies, []);
+});
+
+test('each currency gets its own series', async () => {
+  const svc = createSnapshotService(openDb(':memory:'), {
+    cedears: { snapshotValues: async () => [{ value: 10, currency: 'USD' }, { value: 5000, currency: 'ARS' }] },
+  }, silent);
+  await svc.capture('cedears', '2026-09-01');
+  await svc.capture('cedears', '2026-09-02');
+  const byCurrency = Object.fromEntries(svc.getGrowth('cedears').currencies.map((c) => [c.currency, c]));
+  assert.deepEqual(Object.keys(byCurrency).sort(), ['ARS', 'USD']);
+  assert.deepEqual(byCurrency.ARS.series.daily.map((p) => p.value), [5000, 5000]);
 });
 
 test('longer views become available as history accumulates', async () => {
   const svc = createSnapshotService(openDb(':memory:'), {
-    crypto: { snapshotValue: async () => ({ value: 1, currency: 'USDT' }) },
+    crypto: { snapshotValues: async () => [{ value: 1, currency: 'USDT' }] },
   }, silent);
   for (const d of ['2025-12-30', '2026-01-02', '2026-01-10']) await svc.capture('crypto', d);
-  assert.deepEqual(svc.getGrowth('crypto').available, ['daily', 'weekly', 'monthly', 'yearly']);
+  assert.deepEqual(svc.getGrowth('crypto').currencies[0].available, ['daily', 'weekly', 'monthly', 'yearly']);
 });
 
 test('a failing price source skips the snapshot instead of crashing', async () => {
   const svc = createSnapshotService(openDb(':memory:'), {
-    crypto: { snapshotValue: async () => { throw new Error('offline'); } },
+    crypto: { snapshotValues: async () => { throw new Error('offline'); } },
   }, silent);
-  assert.equal(await svc.capture('crypto', '2026-09-01'), null);
-  assert.equal(svc.getGrowth('crypto').series.daily.length, 0);
+  assert.deepEqual(await svc.capture('crypto', '2026-09-01'), []);
+  assert.deepEqual(svc.getGrowth('crypto').currencies, []);
+});
+
+test('migration v2 keeps crypto snapshots and drops the old USD-consolidated CEDEAR ones', () => {
+  const db = new Database(':memory:');
+  db.exec(MIGRATIONS[0]);
+  db.pragma('user_version = 1');
+  db.prepare("INSERT INTO snapshots VALUES ('crypto', '2026-09-22', 1000, 'USDT')").run();
+  db.prepare("INSERT INTO snapshots VALUES ('cedears', '2026-09-22', 5000, 'USD')").run();
+  migrate(db);
+  assert.equal(db.pragma('user_version', { simple: true }), MIGRATIONS.length);
+  assert.deepEqual(db.prepare('SELECT portfolio, date, currency, value FROM snapshots').all(), [
+    { portfolio: 'crypto', date: '2026-09-22', currency: 'USDT', value: 1000 },
+  ]);
 });

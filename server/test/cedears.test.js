@@ -3,15 +3,14 @@ import assert from 'node:assert/strict';
 import { openDb } from '../src/db.js';
 import { createCedearService } from '../src/cedears/service.js';
 
-// Market price = avg price * 1.1, 1 USD = 1000 ARS.
+// Market price = avg price * 1.1; previous close = avg price.
 const fakeMarket = {
   name: 'Test',
   mock: true,
-  async getPrices(items) {
-    return Object.fromEntries(items.map((i) => [`${i.ticker}|${i.currency}`, i.avgPrice * 1.1]));
-  },
-  async getUsdArsRate() {
-    return 1000;
+  async getQuotes(items) {
+    return Object.fromEntries(
+      items.map((i) => [`${i.ticker}|${i.currency}`, { price: i.avgPrice * 1.1, previousClose: i.avgPrice }]),
+    );
   },
 };
 
@@ -80,20 +79,34 @@ test('fully sold positions stay visible at zero', async () => {
   assert.equal(positions[1].weight, 0);
 });
 
-test('weights, values and totals are consolidated in USD', async () => {
+test('totals stay in their own currency and weights are per currency', async () => {
   const svc = setup();
-  svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 1000, date: '2026-09-01' });
+  svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 3000, date: '2026-09-01' });
   svc.createCashMovement({ type: 'deposit', currency: 'ARS', amount: 2000000, date: '2026-09-01' });
   buy(svc, 'SPY', 1, 1000); // value 1100 USD
-  buy(svc, 'AAPL.BA', 10, 110000, { currency: 'ARS' }); // value 1,210,000 ARS = 1210 USD
+  buy(svc, 'QQQ', 1, 1000); // value 1100 USD
+  buy(svc, 'AAPL.BA', 10, 110000, { currency: 'ARS' }); // value 1,210,000 ARS
   const p = await svc.getPortfolio();
   const byTicker = Object.fromEntries(p.positions.map((r) => [r.ticker, r]));
-  assert.equal(byTicker['AAPL.BA'].weight, 52.3809523809524);
-  assert.equal(byTicker.SPY.weight, 47.6190476190476);
+  assert.equal(byTicker['AAPL.BA'].weight, 100);
+  assert.equal(byTicker.SPY.weight, 50);
   assert.equal(byTicker.SPY.pnlPct, 10);
-  assert.equal(p.totals.positionsUsd, 2310);
-  assert.equal(p.totals.cashUsd, 900); // 0 USD + 900,000 ARS
-  assert.equal(p.totals.totalUsd, 3210);
+  assert.equal(byTicker.SPY.dayChangePct, 10);
+  assert.deepEqual(p.totals.USD, {
+    positions: 2200, cash: 1000, total: 3200, dayChange: 200, dayChangePct: 6.66666666666667, used: true,
+  });
+  assert.deepEqual(p.totals.ARS, {
+    positions: 1210000, cash: 900000, total: 2110000, dayChange: 110000, dayChangePct: 5.5, used: true,
+  });
+});
+
+test('a currency that was never used is flagged as unused', async () => {
+  const svc = setup();
+  svc.createCashMovement({ type: 'deposit', currency: 'ARS', amount: 1000, date: '2026-09-01' });
+  const { totals } = await svc.getPortfolio();
+  assert.equal(totals.ARS.used, true);
+  assert.equal(totals.USD.used, false);
+  assert.equal(totals.USD.dayChange, null);
 });
 
 test('withdrawals cannot exceed available cash', () => {
@@ -121,10 +134,15 @@ test('deleting history is blocked when it would make the state inconsistent', as
   assert.equal(cash.USD, 1000);
 });
 
-test('snapshot value falls back to cost when a price is missing', async () => {
-  const svc = setup({ ...fakeMarket, getPrices: async () => ({}) });
-  assert.equal(await svc.snapshotValue(), null);
+test('snapshot values are per currency and fall back to cost without a price', async () => {
+  const svc = setup({ ...fakeMarket, getQuotes: async () => ({}) });
+  assert.deepEqual(await svc.snapshotValues(), []);
   svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 1000, date: '2026-09-01' });
   buy(svc, 'SPY', 1, 600);
-  assert.deepEqual(await svc.snapshotValue(), { value: 1000, currency: 'USD' });
+  assert.deepEqual(await svc.snapshotValues(), [{ value: 1000, currency: 'USD' }]);
+  svc.createCashMovement({ type: 'deposit', currency: 'ARS', amount: 5000, date: '2026-09-01' });
+  assert.deepEqual(await svc.snapshotValues(), [
+    { value: 1000, currency: 'USD' },
+    { value: 5000, currency: 'ARS' },
+  ]);
 });

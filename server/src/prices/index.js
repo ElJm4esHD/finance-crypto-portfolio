@@ -6,22 +6,26 @@
 // un archivo nuevo, registrarlo en PROVIDERS y elegirlo por variable de entorno
 // (CRYPTO_PRICE_PROVIDER / MARKET_PRICE_PROVIDER). Nada más cambia.
 //
+// Una cotización (Quote) es:
+//   { price: number, previousClose: number | null }
+//     price          precio actual de 1 unidad
+//     previousClose  precio de cierre del día anterior (o de hace 24 h en cripto);
+//                    se usa para la variación del día. null = sin dato.
+//
 // Contrato — proveedor cripto:
 //   name: string                       nombre visible en la UI
 //   mock: boolean                      true → la UI avisa "precios simulados"
-//   getUsdtPrices(assets: string[])    → Promise<{ [asset]: number | null }>
-//     Precio de 1 unidad de cada activo expresado en USDT.
-//     null = sin precio para ese activo (no se valúa, no rompe nada).
+//   getQuotes(assets: string[])        → Promise<{ [asset]: Quote | null }>
+//     Precios expresados en USDT. null = sin precio para ese activo
+//     (no se valúa, no rompe nada).
 //
 // Contrato — proveedor CEDEARs/ETF:
 //   name, mock                         igual que arriba
-//   getPrices(items: { ticker, currency, avgPrice }[])
-//                                      → Promise<{ [`${ticker}|${currency}`]: number | null }>
-//     Precio actual de 1 unidad en la moneda de la posición.
+//   getQuotes(items: { ticker, currency, avgPrice }[])
+//                                      → Promise<{ [`${ticker}|${currency}`]: Quote | null }>
+//     Precios en la moneda de la posición (ej. AAPL.BA en ARS).
 //     avgPrice (precio promedio de compra) es sólo una pista para el mock;
 //     un proveedor real lo ignora.
-//   getUsdArsRate()                    → Promise<number>
-//     Cuántos ARS vale 1 USD, para consolidar la cartera en USD.
 // ─────────────────────────────────────────────────────────────────────────────
 import { config } from '../config.js';
 import { mockCryptoProvider } from './mock-crypto.js';

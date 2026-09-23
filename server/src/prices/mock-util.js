@@ -10,6 +10,8 @@ export function hash(str) {
   return (h >>> 0) / 4294967295; // 0..1
 }
 
+export const yesterday = () => new Date(Date.now() - 86400000);
+
 // Multiplier around 1.0 (roughly 0.85–1.25) that changes slowly day by day.
 export function dailyDrift(seed, date = new Date()) {
   const day = Math.floor(date.getTime() / 86400000);

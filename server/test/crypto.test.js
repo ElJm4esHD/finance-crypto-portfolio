@@ -6,9 +6,12 @@ import { createCryptoService } from '../src/crypto/service.js';
 const fakePrices = {
   name: 'Test',
   mock: true,
-  async getUsdtPrices(assets) {
-    const table = { BTC: 100000, ETH: 4000, USDT: 1, BNB: 500 };
-    return Object.fromEntries(assets.map((a) => [a, table[a] ?? null]));
+  async getQuotes(assets) {
+    // [price, previous close]
+    const table = { BTC: [100000, 80000], ETH: [4000, null], USDT: [1, 1], BNB: [500, 500] };
+    return Object.fromEntries(
+      assets.map((a) => [a, table[a] ? { price: table[a][0], previousClose: table[a][1] } : null]),
+    );
   },
 };
 
@@ -106,9 +109,31 @@ test('goal can be set and cleared', () => {
 
 test('price provider failures do not break holdings', async () => {
   const db = openDb(':memory:');
-  const svc = createCryptoService(db, { name: 'X', mock: false, getUsdtPrices: async () => { throw new Error('offline'); } });
+  const svc = createCryptoService(db, { name: 'X', mock: false, getQuotes: async () => { throw new Error('offline'); } });
   svc.setHolding('BTC', 1);
   const res = await svc.getHoldings();
   assert.equal(res.holdings[0].value, null);
   assert.equal(res.priceSource.error, 'offline');
+});
+
+test('day change is computed from the previous close of each asset', async () => {
+  const svc = setup();
+  svc.setHolding('BTC', 0.1); // 10000 now, 8000 at previous close
+  svc.setHolding('ETH', 1); // no previous close: counts as unchanged
+  svc.setHolding('USDT', 1000);
+  const res = await svc.getHoldings();
+  const byAsset = Object.fromEntries(res.holdings.map((h) => [h.asset, h]));
+  assert.equal(byAsset.BTC.dayChangePct, 25);
+  assert.equal(byAsset.ETH.dayChangePct, null);
+  assert.equal(res.total, 15000);
+  assert.equal(res.dayChange, 2000);
+  assert.equal(res.dayChangePct, 15.3846153846154); // 2000 / 13000
+  assert.equal(byAsset.BTC.weight, 66.6666666666667);
+});
+
+test('snapshot values are in USDT', async () => {
+  const svc = setup();
+  assert.deepEqual(await svc.snapshotValues(), []);
+  svc.setHolding('BTC', 0.01);
+  assert.deepEqual(await svc.snapshotValues(), [{ value: 1000, currency: 'USDT' }]);
 });

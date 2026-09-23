@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 
 // Each entry runs once, in order. Never edit a migration that already shipped:
 // append a new one instead.
-const MIGRATIONS = [
+export const MIGRATIONS = [
   `
   CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
@@ -64,6 +64,23 @@ const MIGRATIONS = [
     PRIMARY KEY (portfolio, date)
   );
   `,
+  // v2: CEDEARs/ETF are tracked per currency (ARS and USD, no exchange rate),
+  // so a portfolio can have one snapshot per currency and day. The old CEDEAR
+  // snapshots were consolidated into USD with an exchange rate and are not
+  // comparable anymore, so they are dropped (today's is recaptured on start).
+  `
+  CREATE TABLE snapshots_v2 (
+    portfolio TEXT NOT NULL CHECK (portfolio IN ('crypto', 'cedears')),
+    date      TEXT NOT NULL,
+    currency  TEXT NOT NULL,
+    value     REAL NOT NULL,
+    PRIMARY KEY (portfolio, date, currency)
+  );
+  INSERT INTO snapshots_v2 (portfolio, date, currency, value)
+    SELECT portfolio, date, currency, value FROM snapshots WHERE portfolio = 'crypto';
+  DROP TABLE snapshots;
+  ALTER TABLE snapshots_v2 RENAME TO snapshots;
+  `,
 ];
 
 export function openDb(file) {
@@ -76,7 +93,7 @@ export function openDb(file) {
   return db;
 }
 
-function migrate(db) {
+export function migrate(db) {
   const current = db.pragma('user_version', { simple: true });
   for (let v = current; v < MIGRATIONS.length; v++) {
     db.transaction(() => {
