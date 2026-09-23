@@ -5,6 +5,8 @@ import { createCryptoService } from './crypto/service.js';
 import { createCedearService } from './cedears/service.js';
 import { createSnapshotService } from './snapshots/service.js';
 import { NotFoundError, UserError } from './lib/errors.js';
+import { localDate } from './lib/dates.js';
+import { cryptoCsv, cedearsCsv } from './export/csv.js';
 
 function parseId(raw) {
   const id = Number(raw);
@@ -29,6 +31,12 @@ export function buildApp({ db, cryptoPrices, marketPrices, publicDir, logger = f
   });
 
   app.get('/api/health', async () => ({ ok: true }));
+
+  const sendCsv = (reply, name, csv) =>
+    reply
+      .header('content-type', 'text/csv; charset=utf-8')
+      .header('content-disposition', `attachment; filename="${name}-${localDate()}.csv"`)
+      .send(csv);
 
   // ── Cripto ──────────────────────────────────────────────
   app.get('/api/crypto/holdings', () => crypto.getHoldings());
@@ -63,6 +71,8 @@ export function buildApp({ db, cryptoPrices, marketPrices, publicDir, logger = f
 
   app.get('/api/crypto/growth', async () => ({ ...snapshots.getGrowth('crypto'), goal: crypto.getGoal() }));
 
+  app.get('/api/crypto/export.csv', async (req, reply) => sendCsv(reply, 'cripto', await cryptoCsv(crypto)));
+
   // ── CEDEARs / ETF ───────────────────────────────────────
   app.get('/api/cedears/portfolio', () => cedears.getPortfolio());
 
@@ -95,6 +105,8 @@ export function buildApp({ db, cryptoPrices, marketPrices, publicDir, logger = f
   });
 
   app.get('/api/cedears/growth', async () => snapshots.getGrowth('cedears'));
+
+  app.get('/api/cedears/export.csv', async (req, reply) => sendCsv(reply, 'cedears', await cedearsCsv(cedears)));
 
   // ── Frontend (built SPA, hash-routed) ───────────────────
   if (publicDir && fs.existsSync(publicDir)) {

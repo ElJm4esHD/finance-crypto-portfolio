@@ -6,6 +6,11 @@ export function localDate(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
+// Local "YYYY-MM-DD HH:mm".
+export function localDateTime(d = new Date()) {
+  return `${localDate(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 // ISO-8601 week key for a YYYY-MM-DD date, e.g. "2026-W07".
 export function isoWeekKey(dateStr) {
   const d = new Date(`${dateStr}T00:00:00Z`);
