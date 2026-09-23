@@ -60,6 +60,7 @@ export const yahooProvider = {
     const regular = result.meta.currentTradingPeriod?.regular;
     return {
       currency: result.meta.currency ?? null,
+      previousClose: result.meta.chartPreviousClose ?? result.meta.previousClose ?? null,
       points,
       session: regular ? { start: regular.start * 1000, end: regular.end * 1000 } : null,
     };

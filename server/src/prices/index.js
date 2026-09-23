@@ -25,7 +25,7 @@
 //                                   → Promise<{ [ticker]: (Quote & { currency }) | null }>
 //     currency = moneda en la que viene el precio (si difiere de la de la
 //     posición se convierte con el dólar MEP). avgPrice es sólo para el mock.
-//   getIntraday(ticker)             → Promise<{ currency, points, session: { start, end } } | null>
+//   getIntraday(ticker)             → Promise<{ currency, previousClose, points, session: { start, end } } | null>
 //
 // Contrato — proveedor dólar MEP (FX_PROVIDER):
 //   id, name, mock

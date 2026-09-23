@@ -32,6 +32,7 @@ export const mockMarketProvider = {
     const to = Math.min(Date.now(), end);
     return {
       currency,
+      previousClose: base * dailyDrift(ticker, yesterday()),
       points: to > start ? fakeIntraday(ticker, start, to, base * dailyDrift(ticker)) : [],
       session: { start, end },
     };

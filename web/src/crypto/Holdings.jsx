@@ -4,6 +4,7 @@ import { fmtAmount, fmtMoney, fmtPrice, parseNumber, toInputValue } from '../for
 import { useApi, useMutation, useStoredState } from '../hooks.js';
 import { DayChange, EmptyState, ErrorMessage, Field, Icon, Loading, Modal, PctChange, PriceNotice } from '../components/ui.jsx';
 import { convert, DisplayCurrency, MepNote, Money } from '../components/money.jsx';
+import { PriceChartModal } from '../components/PriceChartModal.jsx';
 import { GoalProgress } from './GoalProgress.jsx';
 
 // Crypto is valued in USDT (1:1 with USD); ARS uses the dólar MEP of the day.
@@ -12,6 +13,7 @@ const unit = (c) => (c === 'USD' ? 'USDT' : c);
 export function CryptoHoldings() {
   const { data, error, loading } = useApi('/crypto/holdings');
   const [editing, setEditing] = useState(null); // { asset, amount } | { asset: '' } for a new one
+  const [chart, setChart] = useState(null); // asset whose intraday chart is open
   const [showEmpty, setShowEmpty] = useState(false);
   const [display, setDisplay] = useStoredState('display-currency:crypto', 'USD');
 
@@ -72,7 +74,11 @@ export function CryptoHoldings() {
               <tbody>
                 {rows.map((h) => (
                   <tr class={h.amount === 0 ? 'dimmed' : ''}>
-                    <td class="ticker" data-label="Moneda">{h.asset}</td>
+                    <td class="ticker" data-label="Moneda">
+                      <button type="button" class="symbol-btn" title={`Ver gráfico de ${h.asset}`} onClick={() => setChart(h.asset)}>
+                        {h.asset}
+                      </button>
+                    </td>
                     <td class="num" data-label="Cantidad">{fmtAmount(h.amount)}</td>
                     <td class="num secondary" data-label="Precio">
                       {h.amount > 0 ? (cellDisplay === 'ARS' ? fmtPrice(convert(h.price, 'USDT', 'ARS', rate), 'ARS') : fmtPrice(h.price, 'USDT')) : '—'}
@@ -100,6 +106,7 @@ export function CryptoHoldings() {
       </section>
 
       {editing && <HoldingModal holding={editing} onClose={() => setEditing(null)} />}
+      {chart && <PriceChartModal kind="crypto" symbol={chart} onClose={() => setChart(null)} />}
     </>
   );
 }

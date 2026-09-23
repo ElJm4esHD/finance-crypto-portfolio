@@ -3,6 +3,7 @@ import { fmtAmount, fmtMoney, fmtPct, fmtPrice, fmtSignedMoney } from '../format
 import { useApi, useStoredState } from '../hooks.js';
 import { DayChange, EmptyState, ErrorMessage, Icon, Loading, PctChange, PriceNotice } from '../components/ui.jsx';
 import { convert, DisplayCurrency, MepNote, Money, shownCurrency } from '../components/money.jsx';
+import { PriceChartModal } from '../components/PriceChartModal.jsx';
 import { CashModal } from './CashModal.jsx';
 
 const CURRENCIES = ['ARS', 'USD'];
@@ -24,6 +25,7 @@ function consolidated(totals, currency, rate) {
 export function CedearPortfolio({ onNewOperation }) {
   const { data, error, loading } = useApi('/cedears/portfolio');
   const [cashModal, setCashModal] = useState(null); // currency preset
+  const [chart, setChart] = useState(null); // ticker whose intraday chart is open
   const [display, setDisplay] = useStoredState('display-currency:cedears', 'both');
 
   if (loading) return <Loading />;
@@ -92,17 +94,19 @@ export function CedearPortfolio({ onNewOperation }) {
             positions={positions.filter((p) => p.currency === c)}
             display={rate ? display : c}
             rate={rate}
+            onChart={setChart}
           />
         ))
       )}
 
       {cashModal && <CashModal currency={cashModal} onClose={() => setCashModal(null)} />}
+      {chart && <PriceChartModal kind="cedears" symbol={chart} onClose={() => setChart(null)} />}
     </>
   );
 }
 
 // Prices stay in the position's currency; value and return follow `display`.
-function PositionsTable({ currency, positions, display, rate }) {
+function PositionsTable({ currency, positions, display, rate, onChart }) {
   const moneyIn = shownCurrency(display, currency, rate);
   return (
     <section class="card">
@@ -126,7 +130,11 @@ function PositionsTable({ currency, positions, display, rate }) {
             const tone = p.pnl > 0 ? 'up' : p.pnl < 0 ? 'down' : '';
             return (
               <tr class={isClosed ? 'dimmed' : ''}>
-                <td class="ticker" data-label="Ticker">{p.ticker}</td>
+                <td class="ticker" data-label="Ticker">
+                  <button type="button" class="symbol-btn" title={`Ver gráfico de ${p.ticker}`} onClick={() => onChart(p.ticker)}>
+                    {p.ticker}
+                  </button>
+                </td>
                 <td class="num" data-label="Cantidad">{fmtAmount(p.quantity)}</td>
                 <td class="num secondary" data-label="Precio prom.">{fmtPrice(p.avgPrice, currency)}</td>
                 <td class="num secondary" data-label="Precio actual">{isClosed ? '—' : fmtPrice(p.price, currency)}</td>
