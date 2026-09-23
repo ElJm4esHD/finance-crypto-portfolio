@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import { fmtPct, fmtSignedMoney } from '../format.js';
 
 export function Modal({ title, onClose, children }) {
   const ref = useRef(null);
@@ -88,6 +89,28 @@ export function PriceNotice({ source }) {
   return null;
 }
 
+// Day changes are small: two decimals, and the color follows what is shown.
+const dayTone = (pct) => (pct >= 0.005 ? 'up' : pct <= -0.005 ? 'down' : '');
+
+// "Hoy +1,24 % (+140,00 USDT)" — change since the previous close. Hidden without data.
+export function DayChange({ change, pct, currency }) {
+  if (pct == null) return null;
+  return (
+    <p class="day-change">
+      <span class="muted">Hoy</span>{' '}
+      <span class={`change-value ${dayTone(pct)}`}>
+        {fmtPct(pct, { signed: true, digits: 2 })} ({fmtSignedMoney(change, currency)})
+      </span>
+    </p>
+  );
+}
+
+// Day change of one position, for table cells ("+2,41 %").
+export function PctChange({ value }) {
+  if (value == null) return '—';
+  return <span class={`change-value ${dayTone(value)}`}>{fmtPct(value, { signed: true, digits: 2 })}</span>;
+}
+
 export function EmptyState({ title, children, action }) {
   return (
     <div class="empty">
@@ -109,6 +132,7 @@ const ICONS = {
   edit: 'M4 20h4L19 9l-4-4L4 16v4z',
   alert: 'M12 8v5M12 16.5v.5M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z',
   arrow: 'M5 12h14M13 6l6 6-6 6',
+  download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
 };
 
 export function Icon({ name }) {

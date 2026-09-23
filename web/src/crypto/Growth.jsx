@@ -39,7 +39,7 @@ export function CryptoGrowth() {
         )}
       </section>
 
-      <GrowthView growth={growth.data} goal={goal} />
+      <GrowthView data={growth.data.currencies[0] ?? null} goal={goal} />
 
       {editingGoal && <GoalModal goal={goal} onClose={() => setEditingGoal(false)} />}
     </>

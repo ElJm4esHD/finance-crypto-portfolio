@@ -7,14 +7,12 @@ const VIEW_LABELS = { daily: 'Diario', weekly: 'Semanal', monthly: 'Mensual', ye
 
 // Chart card shared by both portfolios: view selector, change in the period,
 // the chart itself and an optional table with the same numbers.
-export function GrowthView({ growth, goal }) {
+// `data` is one currency's history ({ currency, available, series }) or null.
+export function GrowthView({ data, goal, titleExtra }) {
   const [view, setView] = useState('daily');
   const [showTable, setShowTable] = useState(false);
-  const current = growth.available.includes(view) ? view : 'daily';
-  const points = growth.series[current];
-  const currency = growth.currency;
 
-  if (points.length === 0) {
+  if (!data) {
     return (
       <section class="card">
         <h2 class="card-title">Evolución</h2>
@@ -25,6 +23,9 @@ export function GrowthView({ growth, goal }) {
     );
   }
 
+  const current = data.available.includes(view) ? view : 'daily';
+  const points = data.series[current];
+  const { currency } = data;
   const first = points[0].value;
   const last = points.at(-1).value;
   const change = last - first;
@@ -34,13 +35,16 @@ export function GrowthView({ growth, goal }) {
   return (
     <section class="card">
       <div class="card-head">
-        <h2 class="card-title">Evolución</h2>
-        {growth.available.length > 1 && (
+        <div class="card-title-group">
+          <h2 class="card-title">Evolución</h2>
+          {titleExtra}
+        </div>
+        {data.available.length > 1 && (
           <Segmented
             label="Agrupar por"
             value={current}
             onChange={setView}
-            options={growth.available.map((v) => ({ value: v, label: VIEW_LABELS[v] }))}
+            options={data.available.map((v) => ({ value: v, label: VIEW_LABELS[v] }))}
           />
         )}
       </div>

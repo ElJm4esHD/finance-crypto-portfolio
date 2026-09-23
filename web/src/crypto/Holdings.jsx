@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { api } from '../api.js';
 import { fmtAmount, fmtMoney, fmtPrice, parseNumber, toInputValue } from '../format.js';
 import { useApi, useMutation } from '../hooks.js';
-import { EmptyState, ErrorMessage, Field, Icon, Loading, Modal, PriceNotice } from '../components/ui.jsx';
+import { DayChange, EmptyState, ErrorMessage, Field, Icon, Loading, Modal, PctChange, PriceNotice } from '../components/ui.jsx';
 import { GoalProgress } from './GoalProgress.jsx';
 
 export function CryptoHoldings() {
@@ -24,6 +24,7 @@ export function CryptoHoldings() {
           Valor total <PriceNotice source={data.priceSource.error ? null : data.priceSource} />
         </p>
         <p class="hero-value">{fmtMoney(data.total, 'USDT')}</p>
+        <DayChange change={data.dayChange} pct={data.dayChangePct} currency="USDT" />
         {data.goal && <GoalProgress total={data.total} goal={data.goal} compact />}
       </section>
       {data.priceSource.error && <PriceNotice source={data.priceSource} />}
@@ -49,6 +50,7 @@ export function CryptoHoldings() {
                   <th class="num">Cantidad</th>
                   <th class="num">Precio</th>
                   <th class="num">Valor</th>
+                  <th class="num">Hoy</th>
                   <th class="actions" aria-label="Acciones" />
                 </tr>
               </thead>
@@ -59,6 +61,7 @@ export function CryptoHoldings() {
                     <td class="num" data-label="Cantidad">{fmtAmount(h.amount)}</td>
                     <td class="num secondary" data-label="Precio">{h.amount > 0 ? fmtPrice(h.price, 'USDT') : '—'}</td>
                     <td class="num strong" data-label="Valor">{h.value === null ? (h.amount > 0 ? 'Sin precio' : '—') : fmtMoney(h.value, 'USDT')}</td>
+                    <td class="num" data-label="Hoy">{h.amount > 0 ? <PctChange value={h.dayChangePct} /> : '—'}</td>
                     <td class="actions">
                       <button type="button" class="icon-btn" aria-label={`Corregir saldo de ${h.asset}`} title="Corregir saldo" onClick={() => setEditing(h)}>
                         <Icon name="edit" />

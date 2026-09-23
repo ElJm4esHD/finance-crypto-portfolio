@@ -56,6 +56,7 @@ body {
   color: var(--ink);
   font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
 h1, h2, p { margin: 0; }
@@ -63,7 +64,10 @@ a { color: inherit; text-decoration: none; }
 button, input { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.container { max-width: 1040px; margin: 0 auto; padding-inline: 20px; }
+.container {
+  max-width: 1040px; margin: 0 auto;
+  padding-inline: max(20px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-right));
+}
 .muted { color: var(--ink-2); }
 .small { font-size: 0.875rem; }
 .block { display: block; }
@@ -74,7 +78,7 @@ button, input { font: inherit; color: inherit; }
 .icon { width: 1.15em; height: 1.15em; flex: none; }
 
 /* ── Top navigation ─────────────────────────────────────── */
-.topbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding-top: env(safe-area-inset-top); }
 .topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; flex-wrap: wrap; }
 .brand { font-weight: 700; font-size: 1.1rem; letter-spacing: -0.01em; }
 
@@ -88,7 +92,9 @@ button, input { font: inherit; color: inherit; }
 .tabs a { padding: 16px 12px 14px; font-weight: 600; color: var(--ink-2); border-bottom: 2px solid transparent; white-space: nowrap; }
 .tabs a.active { color: var(--ink); border-bottom-color: var(--accent); }
 
-.main { padding-block: 24px 64px; display: flex; flex-direction: column; gap: 16px; }
+.subbar-actions { display: flex; gap: 8px; flex: none; }
+
+.main { padding-block: 24px calc(64px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; }
 
 /* ── Buttons ────────────────────────────────────────────── */
 .btn {
@@ -116,6 +122,8 @@ button, input { font: inherit; color: inherit; }
 .hero { padding: 8px 4px 4px; display: flex; flex-direction: column; gap: 4px; }
 .hero-label { color: var(--ink-2); font-weight: 500; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .hero-value { font-size: clamp(2.25rem, 7vw, 3.25rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.hero-totals { display: flex; flex-wrap: wrap; gap: 8px 48px; }
+.day-change { font-size: 1.05rem; margin-top: 2px; }
 
 .pill {
   font-size: 0.75rem; font-weight: 600; padding: 2px 10px; border-radius: 999px;
@@ -131,6 +139,7 @@ button, input { font: inherit; color: inherit; }
 }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-title { font-size: 1.125rem; font-weight: 700; }
+.card-title-group { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .card > .card-title { margin-bottom: 12px; }
 
 .cash-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -263,12 +272,13 @@ input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px 
 
 /* ── Phone layout ───────────────────────────────────────── */
 @media (max-width: 640px) {
-  .container { padding-inline: 16px; }
+  .container { padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
   .topbar-inner { padding-block: 10px; }
   .section-switch { width: 100%; }
   .section-switch a { flex: 1; text-align: center; padding-inline: 8px; }
-  .subbar-inner .btn span { display: none; } /* icon-only action on phones */
-  .subbar-inner .btn { padding: 0 12px; }
+  .subbar-inner .btn span { display: none; } /* icon-only actions on phones */
+  .subbar-inner .btn { padding: 0; width: 40px; min-height: 40px; }
+  .subbar-actions { gap: 6px; }
   .tabs a { padding-inline: 8px; }
   .cash-grid { grid-template-columns: 1fr; }
   .card { padding: 16px; }

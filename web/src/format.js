@@ -25,10 +25,11 @@ export function fmtPrice(n, currency) {
 // Quantities: as many decimals as they have (up to 8), no trailing zeros.
 export const fmtAmount = (n) => (n == null ? '—' : amount8.format(n));
 
-export function fmtPct(n, { signed = false } = {}) {
+export function fmtPct(n, { signed = false, digits = 1 } = {}) {
   if (n == null || !Number.isFinite(n)) return '—';
-  const s = pct1.format(Math.abs(n) < 0.05 ? 0 : n);
-  return `${signed && n >= 0.05 ? '+' : ''}${s} %`;
+  const half = 0.5 / 10 ** digits; // below this it rounds to zero: show it unsigned
+  const s = (digits === 1 ? pct1 : nf(digits, digits)).format(Math.abs(n) < half ? 0 : n);
+  return `${signed && n >= half ? '+' : ''}${s} %`;
 }
 
 export function fmtSignedMoney(n, currency) {
