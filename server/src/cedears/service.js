@@ -1,17 +1,23 @@
+import { getSetting } from '../db.js';
 import { UserError, NotFoundError } from '../lib/errors.js';
 import { fmt } from '../lib/format.js';
-import { clean, isNegative } from '../lib/num.js';
+import { cents, clean, isNegative, isNegativeMoney } from '../lib/num.js';
 import { dayChangeSummary } from '../lib/day-change.js';
 import { oneOf, toDate, toNumber, toTicker } from '../lib/validate.js';
 import { marketKey } from '../prices/keys.js';
 
 export const CURRENCIES = ['USD', 'ARS'];
 
+// Available cash that is not explained by the history (set once when the
+// deposits and withdrawals loaded while testing were cleared, see db.js v3).
+export const openingCashKey = (currency) => `cedears_opening_cash_${currency}`;
+
 // Rebuilds positions and available cash from the full history.
 // A position is identified by ticker + currency. Buys recompute the weighted
 // average price; sells only lower the quantity. Closed positions stay at 0.
-export function computeState(operations, cashMovements) {
-  const cash = { USD: 0, ARS: 0 };
+// Cash is rounded to cents.
+export function computeState(operations, cashMovements, openingCash = {}) {
+  const cash = { USD: openingCash.USD ?? 0, ARS: openingCash.ARS ?? 0 };
   const positions = new Map();
 
   for (const m of cashMovements) {
@@ -38,7 +44,7 @@ export function computeState(operations, cashMovements) {
     }
   }
 
-  for (const c of CURRENCIES) cash[c] = clean(cash[c]);
+  for (const c of CURRENCIES) cash[c] = cents(cash[c]);
   return { positions, cash };
 }
 
@@ -58,12 +64,14 @@ export function createCedearService(db, priceProvider) {
     deleteMovement: db.prepare('DELETE FROM cedear_cash_movements WHERE id = ?'),
   };
 
-  const currentState = () => computeState(q.operations.all(), q.movements.all());
+  const openingCash = () => Object.fromEntries(CURRENCIES.map((c) => [c, Number(getSetting(db, openingCashKey(c)) ?? 0)]));
+  const stateOf = (operations, movements) => computeState(operations, movements, openingCash());
+  const currentState = () => stateOf(q.operations.all(), q.movements.all());
 
   // Guard used when deleting history: the remaining history must still make sense.
   function assertConsistent(state, what) {
     for (const c of CURRENCIES) {
-      if (isNegative(state.cash[c])) {
+      if (isNegativeMoney(state.cash[c])) {
         throw new UserError(`No se puede borrar ${what}: el dinero disponible en ${c} quedaría en negativo (${fmt(state.cash[c])}).`);
       }
     }
@@ -89,7 +97,8 @@ export function createCedearService(db, priceProvider) {
   // the share of each position within the positions of its currency.
   async function valuate() {
     const movements = q.movements.all();
-    const { positions, cash } = computeState(q.operations.all(), movements);
+    const opening = openingCash();
+    const { positions, cash } = computeState(q.operations.all(), movements, opening);
     const all = [...positions.values()];
     const { quotes, error } = await fetchQuotes(all.filter((p) => p.quantity > 0));
 
@@ -126,7 +135,7 @@ export function createCedearService(db, priceProvider) {
         total: clean(total),
         ...dayChangeSummary(total, withDay.length ? withDay.reduce((s, r) => s + r.dayChange, 0) : null),
         // Shown only for currencies the user actually uses.
-        used: inCurrency.length > 0 || movements.some((m) => m.currency === c),
+        used: inCurrency.length > 0 || movements.some((m) => m.currency === c) || opening[c] !== 0,
       };
     }
 
@@ -161,8 +170,8 @@ export function createCedearService(db, priceProvider) {
       return db.transaction(() => {
         const { positions, cash } = currentState();
         if (op.type === 'buy') {
-          const needed = clean(op.quantity * op.price + op.commission);
-          if (isNegative(cash[op.currency] - needed)) {
+          const needed = cents(op.quantity * op.price + op.commission);
+          if (isNegativeMoney(cash[op.currency] - needed)) {
             throw new UserError(
               `Fondos insuficientes en ${op.currency}: tenés ${fmt(cash[op.currency])} disponibles y la compra necesita ${fmt(needed)}. ` +
               'Cargá un depósito antes de registrar la compra.',
@@ -173,7 +182,7 @@ export function createCedearService(db, priceProvider) {
           if (isNegative(held - op.quantity)) {
             throw new UserError(`No tenés suficientes ${op.ticker} en ${op.currency}: tenés ${fmt(held)} y querés vender ${fmt(op.quantity)}.`);
           }
-          if (isNegative(cash[op.currency] + op.quantity * op.price - op.commission)) {
+          if (isNegativeMoney(cash[op.currency] + op.quantity * op.price - op.commission)) {
             throw new UserError(`La comisión supera lo que tenés disponible en ${op.currency}.`);
           }
         }
@@ -187,7 +196,7 @@ export function createCedearService(db, priceProvider) {
         const op = q.operation.get(id);
         if (!op) throw new NotFoundError('Esa operación no existe.');
         const remaining = q.operations.all().filter((o) => o.id !== op.id);
-        assertConsistent(computeState(remaining, q.movements.all()), `esta ${op.type === 'buy' ? 'compra' : 'venta'}`);
+        assertConsistent(stateOf(remaining, q.movements.all()), `esta ${op.type === 'buy' ? 'compra' : 'venta'}`);
         q.deleteOperation.run(id);
       })();
     },
@@ -207,7 +216,7 @@ export function createCedearService(db, priceProvider) {
       return db.transaction(() => {
         if (m.type === 'withdrawal') {
           const { cash } = currentState();
-          if (isNegative(cash[m.currency] - m.amount)) {
+          if (isNegativeMoney(cash[m.currency] - m.amount)) {
             throw new UserError(`No podés retirar ${fmt(m.amount)} ${m.currency}: tenés ${fmt(cash[m.currency])} disponibles.`);
           }
         }
@@ -221,7 +230,7 @@ export function createCedearService(db, priceProvider) {
         const m = q.movement.get(id);
         if (!m) throw new NotFoundError('Ese movimiento no existe.');
         const remaining = q.movements.all().filter((x) => x.id !== m.id);
-        assertConsistent(computeState(q.operations.all(), remaining), `este ${m.type === 'deposit' ? 'depósito' : 'retiro'}`);
+        assertConsistent(stateOf(q.operations.all(), remaining), `este ${m.type === 'deposit' ? 'depósito' : 'retiro'}`);
         q.deleteMovement.run(id);
       })();
     },

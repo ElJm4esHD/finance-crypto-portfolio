@@ -76,3 +76,29 @@ test('migration v2 keeps crypto snapshots and drops the old USD-consolidated CED
     { portfolio: 'crypto', date: '2026-09-22', currency: 'USDT', value: 1000 },
   ]);
 });
+
+test('migration v3 clears cash movements and sets the available cash, keeping operations', async () => {
+  const { createCedearService } = await import('../src/cedears/service.js');
+  const db = new Database(':memory:');
+  db.exec(MIGRATIONS[0]);
+  db.exec(MIGRATIONS[1]);
+  db.pragma('user_version = 2');
+  db.exec(`
+    INSERT INTO cedear_cash_movements (type, currency, amount, date) VALUES ('deposit', 'USD', 1000, '2026-09-01');
+    INSERT INTO cedear_operations (type, ticker, quantity, price, currency, commission, date) VALUES
+      ('buy', 'SPY', 2, 500.4, 'USD', 1.21, '2026-09-02'),
+      ('buy', 'AAPL.BA', 3, 15000, 'ARS', 0, '2026-09-02'),
+      ('sell', 'SPY', 1, 510.3, 'USD', 0.7, '2026-09-03');`);
+  migrate(db);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM cedear_cash_movements').get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM cedear_operations').get().n, 3);
+  const svc = createCedearService(db, { name: 'T', mock: true, getQuotes: async () => ({}) });
+  const { cash, positions } = await svc.getPortfolio();
+  assert.deepEqual(cash, { USD: 12890, ARS: 14814550 });
+  assert.deepEqual(positions.map((p) => [p.ticker, p.quantity]).sort(), [['AAPL.BA', 3], ['SPY', 1]]);
+});
+
+test('migration v3 leaves an empty database alone', () => {
+  const db = openDb(':memory:');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'cedears_opening_cash_%'").get().n, 0);
+});

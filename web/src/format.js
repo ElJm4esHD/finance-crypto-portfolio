@@ -1,7 +1,8 @@
 const LOCALE = 'es-AR';
 
-const nf = (min, max) => new Intl.NumberFormat(LOCALE, { minimumFractionDigits: min, maximumFractionDigits: max });
-const money2 = nf(2, 2);
+const nf = (min, max, opts) => new Intl.NumberFormat(LOCALE, { minimumFractionDigits: min, maximumFractionDigits: max, ...opts });
+// "negative": a value that rounds to 0,00 never shows as "-0,00".
+const money2 = nf(2, 2, { signDisplay: 'negative' });
 const amount8 = nf(0, 8);
 const pct1 = nf(1, 1);
 

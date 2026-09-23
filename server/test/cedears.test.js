@@ -146,3 +146,24 @@ test('snapshot values are per currency and fall back to cost without a price', a
     { value: 5000, currency: 'ARS' },
   ]);
 });
+
+test('available cash is kept in cents and never ends at -0', async () => {
+  const svc = setup();
+  svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 0.3, date: '2026-09-01' });
+  // 0.3 - 3 × 0.1 is -5.5e-17 in floats: it used to show up as "US$ -0,00".
+  buy(svc, 'SPY', 3, 0.1);
+  svc.createCashMovement({ type: 'deposit', currency: 'ARS', amount: 14814550.3, date: '2026-09-01' });
+  buy(svc, 'AAPL.BA', 3, 1234567.1, { currency: 'ARS', commission: 0.1 });
+  buy(svc, 'KO.BA', 7, 1587264.1, { currency: 'ARS', commission: 0.2 });
+  const { cash } = await svc.getPortfolio();
+  assert.ok(Object.is(cash.USD, 0), `expected +0, got ${cash.USD}`);
+  assert.ok(Object.is(cash.ARS, 0), `expected +0, got ${cash.ARS}`);
+  assert.throws(() => buy(svc, 'KO.BA', 1, 0.01, { currency: 'ARS' }), /Fondos insuficientes en ARS/);
+});
+
+test('buys that would leave cash negative by a cent are rejected', () => {
+  const svc = setup();
+  svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 100, date: '2026-09-01' });
+  assert.throws(() => buy(svc, 'SPY', 1, 100.01), /Fondos insuficientes/);
+  assert.throws(() => buy(svc, 'SPY', 1, 100, { commission: 0.01 }), /Fondos insuficientes/);
+});

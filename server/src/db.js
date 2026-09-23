@@ -2,8 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
-// Each entry runs once, in order. Never edit a migration that already shipped:
-// append a new one instead.
+// Available cash the owner's portfolio must show after migration v3.
+const V3_CASH_TARGET = { USD: 12890, ARS: 14814550 };
+
+// Each entry runs once, in order: an SQL string or a function(db). Never edit
+// a migration that already shipped: append a new one instead.
 export const MIGRATIONS = [
   `
   CREATE TABLE settings (
@@ -81,6 +84,27 @@ export const MIGRATIONS = [
   DROP TABLE snapshots;
   ALTER TABLE snapshots_v2 RENAME TO snapshots;
   `,
+  // v3 (one-time data fix): the deposits and withdrawals loaded while testing
+  // left the available cash wrong (even negative). They are removed from the
+  // history and the available cash is set to its real value through an
+  // opening balance per currency, so buys and sells still move it from there.
+  // Operations and positions are not touched. Skipped on an empty database.
+  (db) => {
+    const hasData = db.prepare(
+      'SELECT EXISTS (SELECT 1 FROM cedear_operations) OR EXISTS (SELECT 1 FROM cedear_cash_movements) AS yes',
+    ).get().yes;
+    if (!hasData) return;
+    const fromOperations = Object.fromEntries(
+      db.prepare(`
+        SELECT currency, SUM(CASE type WHEN 'buy' THEN -(quantity * price + commission)
+                                       ELSE quantity * price - commission END) AS delta
+        FROM cedear_operations GROUP BY currency`).all().map((r) => [r.currency, r.delta]),
+    );
+    for (const [currency, target] of Object.entries(V3_CASH_TARGET)) {
+      setSetting(db, `cedears_opening_cash_${currency}`, target - (fromOperations[currency] ?? 0));
+    }
+    db.exec('DELETE FROM cedear_cash_movements');
+  },
 ];
 
 export function openDb(file) {
@@ -97,7 +121,9 @@ export function migrate(db) {
   const current = db.pragma('user_version', { simple: true });
   for (let v = current; v < MIGRATIONS.length; v++) {
     db.transaction(() => {
-      db.exec(MIGRATIONS[v]);
+      const m = MIGRATIONS[v];
+      if (typeof m === 'function') m(db);
+      else db.exec(m);
       db.pragma(`user_version = ${v + 1}`);
     })();
   }

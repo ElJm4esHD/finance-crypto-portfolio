@@ -70,6 +70,8 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 - **Venta**: baja la cantidad (el promedio no cambia) y suma `cantidad × precio − comisión` al disponible. No se puede vender más de lo que se tiene.
 - Las posiciones vendidas por completo quedan visibles en 0 como "Cerrada".
 - Posiciones y dinero disponible se **recalculan desde el historial**, así que borrar una operación o un depósito deja todo consistente (si el borrado dejaría algo en negativo, se rechaza).
+- El dinero disponible se lleva **en centavos**: gastar exactamente lo que hay deja 0 (nunca "-0,00") y cualquier compra, venta o retiro que lo dejaría por debajo de 0 se rechaza.
+- Además del historial puede haber un **saldo inicial** por moneda (setting `cedears_opening_cash_<moneda>`): se usó una sola vez para reemplazar los depósitos y retiros de prueba por el disponible real (migración v3).
 - **Sin tipo de cambio**: el total de la cartera se muestra en pesos y en dólares por separado (posiciones de esa moneda + disponible en esa moneda). Las posiciones se agrupan por moneda y el **peso %** es dentro de su moneda. Sin precio de mercado, una posición se valúa a su costo.
 
 ### Variación del día
