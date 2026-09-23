@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.js\"",
     "seed:demo": "node src/scripts/seed-demo.js"
   },
   "dependencies": {
