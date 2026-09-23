@@ -47,7 +47,7 @@ function Operations() {
           const gross = op.quantity * op.price;
           const total = op.type === 'buy' ? gross + op.commission : gross - op.commission;
           return (
-            <li class="list-row">
+            <li class="list-row has-badge">
               <span class={`badge ${op.type === 'buy' ? 'badge-up' : 'badge-down'}`}>{op.type === 'buy' ? 'Compra' : 'Venta'}</span>
               <div class="list-main">
                 <p>
@@ -90,7 +90,7 @@ function CashMovements() {
       <ErrorMessage>{deleteError}</ErrorMessage>
       <ul class="list">
         {data.map((m) => (
-          <li class="list-row">
+          <li class="list-row has-badge">
             <span class={`badge ${m.type === 'deposit' ? 'badge-up' : 'badge-down'}`}>{m.type === 'deposit' ? 'Depósito' : 'Retiro'}</span>
             <div class="list-main">
               <p class="muted small">

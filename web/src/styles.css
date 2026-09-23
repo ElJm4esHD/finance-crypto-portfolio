@@ -248,6 +248,8 @@ input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px 
 .chart .series-line { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart .series-dot { fill: var(--series); stroke: var(--surface); stroke-width: 2; }
 .chart .end-label { fill: var(--ink); font-size: 13px; font-weight: 600; }
+/* Surface-colored halo keeps labels legible where they cross the line. */
+.chart .end-label, .chart .goal-label { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .chart .goal-line { stroke: var(--ink-3); stroke-width: 1; }
 .chart .goal-label { fill: var(--ink-2); font-size: 12px; font-weight: 600; }
 .chart .crosshair { stroke: var(--border-strong); stroke-width: 1; }
@@ -267,18 +269,36 @@ input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px 
   .section-switch a { flex: 1; text-align: center; padding-inline: 8px; }
   .subbar-inner .btn span { display: none; } /* icon-only action on phones */
   .subbar-inner .btn { padding: 0 12px; }
+  .tabs a { padding-inline: 8px; }
   .cash-grid { grid-template-columns: 1fr; }
   .card { padding: 16px; }
   .form-row { grid-template-columns: 1fr; }
 
-  /* Tables become stacked cards: one row per holding, label/value pairs. */
+  /* Tables become stacked cards: ticker and value on top, details below. */
+  .table.responsive, .table.responsive tbody { display: block; }
   .table.responsive thead { display: none; }
-  .table.responsive tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .table.responsive tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 16px;
+    padding: 14px 0; border-bottom: 1px solid var(--border); position: relative;
+  }
+  .table.responsive tr:has(td.actions) { padding-right: 44px; }
   .table.responsive tr:last-child { border-bottom: 0; }
-  .table.responsive td { border: 0; padding: 2px 0; text-align: left; }
-  .table.responsive td.ticker { font-size: 1.05rem; }
-  .table.responsive td.num[data-label]::before { content: attr(data-label) ' '; color: var(--ink-3); font-weight: 400; font-size: 0.8125rem; margin-right: 6px; }
-  .table.responsive td.actions { grid-row: 1; grid-column: 2; width: auto; }
-  .table.responsive td.num { text-align: left; }
+  .table.responsive td { border: 0; padding: 0; text-align: left; white-space: normal; font-size: 0.9375rem; }
+  .table.responsive td.ticker { grid-row: 1; grid-column: 1; font-size: 1.05rem; }
+  .table.responsive td.strong { grid-row: 1; grid-column: 2; text-align: right; font-size: 1.05rem; }
+  .table.responsive td.num.strong[data-label]::before { content: none; }
+  .table.responsive td.num[data-label]::before {
+    content: attr(data-label); display: block; color: var(--ink-3); font-weight: 400; font-size: 0.75rem;
+  }
+  .table.responsive td.ticker + td { margin-top: 6px; }
+  .table.responsive td.ticker + td + td { margin-top: 6px; }
+  .table.responsive td.actions { position: absolute; top: 6px; right: 0; width: auto; }
   .table.responsive .change-value .block { display: inline; margin-left: 6px; }
+
+  /* History rows: badge + amount on the first line, details below. */
+  .list-row.has-badge { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: 'badge amount del' 'main main main'; gap: 4px 12px; }
+  .list-row.has-badge .badge { grid-area: badge; min-width: 0; }
+  .list-row.has-badge .list-amount { grid-area: amount; text-align: right; }
+  .list-row.has-badge .icon-btn { grid-area: del; }
+  .list-row.has-badge .list-main { grid-area: main; }
 }
