@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import Fastify from 'fastify';
+import Fastify, { LogController } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { createCryptoService } from './crypto/service.js';
 import { createCedearService } from './cedears/service.js';
@@ -13,7 +13,7 @@ function parseId(raw) {
 }
 
 export function buildApp({ db, cryptoPrices, marketPrices, publicDir, logger = false }) {
-  const app = Fastify({ logger, disableRequestLogging: true });
+  const app = Fastify({ logger, logController: new LogController({ disableRequestLogging: true }) });
   const crypto = createCryptoService(db, cryptoPrices);
   const cedears = createCedearService(db, marketPrices);
   const snapshots = createSnapshotService(db, { crypto, cedears }, app.log);
