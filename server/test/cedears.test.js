@@ -5,11 +5,12 @@ import { createCedearService } from '../src/cedears/service.js';
 
 // Market price = avg price * 1.1; previous close = avg price.
 const fakeMarket = {
+  id: 'test',
   name: 'Test',
   mock: true,
   async getQuotes(items) {
     return Object.fromEntries(
-      items.map((i) => [`${i.ticker}|${i.currency}`, { price: i.avgPrice * 1.1, previousClose: i.avgPrice }]),
+      items.map((i) => [i.ticker, { price: i.avgPrice * 1.1, previousClose: i.avgPrice, currency: i.currency }]),
     );
   },
 };

@@ -124,3 +124,22 @@ test('CSV cells are quoted and protected against formulas', async (t) => {
   const csv = (await app.inject('/api/cedears/export.csv')).body;
   assert.match(csv, /,"'=HYPERLINK\(""x""\), sueldo"\r\n/);
 });
+
+test('intraday charts and the dólar MEP over HTTP', async (t) => {
+  const fx = { get: () => ({ rate: 1500, buy: 1480, sell: 1500, stale: null }) };
+  const { app } = buildApp({ db: openDb(':memory:'), cryptoPrices: mockCryptoProvider, marketPrices: mockMarketProvider, fx });
+  t.after(() => app.close());
+
+  assert.equal((await app.inject('/api/fx/mep')).json().mep.rate, 1500);
+  assert.equal((await app.inject('/api/crypto/holdings')).json().fx.rate, 1500);
+  assert.equal((await app.inject('/api/cedears/portfolio')).json().fx.rate, 1500);
+
+  const btc = (await app.inject('/api/crypto/chart/btc')).json();
+  assert.equal(btc.asset, 'BTC');
+  assert.equal(btc.points.length, 289);
+  assert.deepEqual((await app.inject('/api/crypto/chart/USDT')).json().points, []);
+
+  const spy = await app.inject('/api/cedears/chart/SPY');
+  assert.equal(spy.statusCode, 200);
+  assert.ok(spy.json().session.end > spy.json().session.start);
+});

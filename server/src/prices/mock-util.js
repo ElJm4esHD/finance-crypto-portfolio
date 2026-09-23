@@ -18,3 +18,12 @@ export function dailyDrift(seed, date = new Date()) {
   const phase = hash(seed) * Math.PI * 2;
   return 1.05 + 0.12 * Math.sin(day / 9 + phase) + 0.03 * Math.sin(day / 2.3 + phase * 2);
 }
+
+// Fake intraday line from `from` to `to` (ms) every 5 minutes, ending at `end`.
+export function fakeIntraday(seed, from, to, end) {
+  const step = 5 * 60_000;
+  const n = Math.max(2, Math.floor((to - from) / step) + 1);
+  const phase = hash(seed) * Math.PI * 2;
+  const wave = (i) => 1 + 0.01 * Math.sin(i / 11 + phase) + 0.004 * Math.sin(i / 3.1 + phase * 3);
+  return Array.from({ length: n }, (_, i) => ({ t: from + i * step, value: (end * wave(i)) / wave(n - 1) }));
+}

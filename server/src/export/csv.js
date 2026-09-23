@@ -23,7 +23,8 @@ function toCsv(blocks) {
   return `﻿${lines.join('\r\n')}`;
 }
 
-function sourceLabel({ name, mock, error }) {
+function sourceLabel({ name, mock, stale, error }) {
+  if (stale) return `${name}: desactualizados desde ${localDateTime(new Date(stale.since))} (${error})`;
   if (error) return `Sin precios (${error})`;
   return mock ? 'Simulados: NO son precios reales de mercado' : name;
 }

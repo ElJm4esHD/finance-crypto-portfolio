@@ -11,10 +11,10 @@ services:
       - "${PORT:-8080}:8080"
     environment:
       TZ: America/Argentina/Buenos_Aires
-      # Price providers: "mock" until the real integrations are implemented
-      # (server/src/prices/). Then: CRYPTO_PRICE_PROVIDER=binance, MARKET_PRICE_PROVIDER=real
-      CRYPTO_PRICE_PROVIDER: mock
-      MARKET_PRICE_PROVIDER: mock
+      # Price providers (server/src/prices/). "mock" = made-up prices, no internet.
+      CRYPTO_PRICE_PROVIDER: binance
+      MARKET_PRICE_PROVIDER: yahoo
+      FX_PROVIDER: dolarapi
       SNAPSHOT_INTERVAL_MINUTES: 60
       BACKUP_KEEP: 14
     volumes:

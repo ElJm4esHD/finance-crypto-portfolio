@@ -4,10 +4,12 @@ import { fmt } from '../lib/format.js';
 import { clean, isNegative, EPSILON } from '../lib/num.js';
 import { dayChangeSummary } from '../lib/day-change.js';
 import { toDateTime, toNumber, toTicker } from '../lib/validate.js';
+import { createCryptoPrices } from '../prices/index.js';
 
 const GOAL_KEY = 'crypto_goal_usdt';
 
-export function createCryptoService(db, priceProvider) {
+export function createCryptoService(db, priceProvider, { log } = {}) {
+  const prices = createCryptoPrices({ db, provider: priceProvider, log });
   const q = {
     holdings: db.prepare('SELECT asset, amount FROM crypto_holdings ORDER BY asset'),
     holding: db.prepare('SELECT asset, amount FROM crypto_holdings WHERE asset = ?'),
@@ -52,19 +54,17 @@ export function createCryptoService(db, priceProvider) {
     return raw === null ? null : Number(raw);
   }
 
+  // Live prices (cached a few minutes). If Binance is down, the last known
+  // ones come back with `stale.since`; an asset never priced gets null.
   async function fetchQuotes(assets) {
-    if (assets.length === 0) return { quotes: {}, error: null };
-    try {
-      return { quotes: await priceProvider.getQuotes(assets), error: null };
-    } catch (err) {
-      return { quotes: {}, error: err.message };
-    }
+    if (assets.length === 0) return { quotes: {}, stale: null, error: null };
+    return prices.getQuotes(assets);
   }
 
   return {
     async getHoldings() {
       const rows = q.holdings.all();
-      const { quotes, error } = await fetchQuotes(rows.filter((r) => r.amount > 0).map((r) => r.asset));
+      const { quotes, stale, error } = await fetchQuotes(rows.filter((r) => r.amount > 0).map((r) => r.asset));
       let total = 0;
       let dayChange = null;
       const holdings = rows.map((r) => {
@@ -84,8 +84,19 @@ export function createCryptoService(db, priceProvider) {
         total: clean(total),
         ...dayChangeSummary(total, dayChange),
         goal: getGoal(),
-        priceSource: { name: priceProvider.name, mock: priceProvider.mock, error },
+        priceSource: { name: prices.name, mock: prices.mock, stale, error },
       };
+    },
+
+    // Price of the last 24 h, for the chart of one coin.
+    async getIntraday(assetInput) {
+      const asset = toTicker(assetInput, 'la moneda');
+      try {
+        const chart = await prices.getIntraday(asset);
+        return { asset, ...(chart ?? { currency: 'USDT', points: [] }) };
+      } catch (err) {
+        throw new UserError(`No se pudo obtener el gráfico de ${asset} desde ${prices.name} (${err.message}).`, 503);
+      }
     },
 
     setHolding(assetInput, amountInput) {
@@ -163,6 +174,7 @@ export function createCryptoService(db, priceProvider) {
     },
 
     // Values recorded by the daily snapshot job. [] → nothing to record yet.
+    // Outdated prices are never recorded.
     async snapshotValues() {
       const rows = q.holdings.all().filter((r) => r.amount > 0);
       if (rows.length === 0) return [];

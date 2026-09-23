@@ -4,7 +4,7 @@ import { fmt } from '../lib/format.js';
 import { cents, clean, isNegative, isNegativeMoney } from '../lib/num.js';
 import { dayChangeSummary } from '../lib/day-change.js';
 import { oneOf, toDate, toNumber, toTicker } from '../lib/validate.js';
-import { marketKey } from '../prices/keys.js';
+import { createMarketPrices, marketKey } from '../prices/index.js';
 
 export const CURRENCIES = ['USD', 'ARS'];
 
@@ -48,7 +48,10 @@ export function computeState(operations, cashMovements, openingCash = {}) {
   return { positions, cash };
 }
 
-export function createCedearService(db, priceProvider) {
+// fx: { get() → { rate } | null } — dólar MEP, only used when a price comes in
+// another currency than its position (e.g. a USD ticker held in pesos).
+export function createCedearService(db, priceProvider, { fx = null, log } = {}) {
+  const prices = createMarketPrices({ db, provider: priceProvider, log });
   const q = {
     operations: db.prepare('SELECT * FROM cedear_operations ORDER BY date DESC, id DESC'),
     operation: db.prepare('SELECT * FROM cedear_operations WHERE id = ?'),
@@ -82,14 +85,18 @@ export function createCedearService(db, priceProvider) {
     }
   }
 
+  // Quote of each open position in its own currency. Prices are fetched once
+  // per ticker (cached; while the market is closed, the last close is kept).
   async function fetchQuotes(open) {
-    if (open.length === 0) return { quotes: {}, error: null };
-    try {
-      const quotes = await priceProvider.getQuotes(open.map(({ ticker, currency, avgPrice }) => ({ ticker, currency, avgPrice })));
-      return { quotes, error: null };
-    } catch (err) {
-      return { quotes: {}, error: err.message };
+    if (open.length === 0) return { quotes: {}, stale: null, error: null };
+    const items = [...new Map(open.map((p) => [p.ticker, { ticker: p.ticker, currency: p.currency, avgPrice: p.avgPrice }])).values()];
+    const { quotes: byTicker, stale, error } = await prices.getQuotes(items);
+    const rate = fx?.get()?.rate ?? null;
+    const quotes = {};
+    for (const p of open) {
+      quotes[marketKey(p.ticker, p.currency)] = inCurrency(byTicker[p.ticker], p.currency, rate);
     }
+    return { quotes, stale, error };
   }
 
   // Positions valued at market price (or at cost while there is no price).
@@ -100,7 +107,7 @@ export function createCedearService(db, priceProvider) {
     const opening = openingCash();
     const { positions, cash } = computeState(q.operations.all(), movements, opening);
     const all = [...positions.values()];
-    const { quotes, error } = await fetchQuotes(all.filter((p) => p.quantity > 0));
+    const { quotes, stale, error } = await fetchQuotes(all.filter((p) => p.quantity > 0));
 
     const rows = all.map((p) => {
       const quote = p.quantity > 0 ? quotes[marketKey(p.ticker, p.currency)] : null;
@@ -145,12 +152,24 @@ export function createCedearService(db, priceProvider) {
       positions: rows,
       cash,
       totals,
-      priceSource: { name: priceProvider.name, mock: priceProvider.mock, error },
+      priceSource: { name: prices.name, mock: prices.mock, stale, error },
     };
+  }
+
+  // Today's session of one ticker (or the last one, with the market closed).
+  async function getIntraday(tickerInput) {
+    const ticker = toTicker(tickerInput, 'el ticker');
+    try {
+      const chart = await prices.getIntraday(ticker);
+      return { ticker, ...(chart ?? { currency: null, points: [], session: null }) };
+    } catch (err) {
+      throw new UserError(`No se pudo obtener el gráfico de ${ticker} desde ${prices.name} (${err.message}).`, 503);
+    }
   }
 
   return {
     getPortfolio: valuate,
+    getIntraday,
 
     listOperations() {
       return q.operations.all();
@@ -242,5 +261,19 @@ export function createCedearService(db, priceProvider) {
       if (p.priceSource.error) throw new Error(`precios CEDEARs/ETF: ${p.priceSource.error}`);
       return CURRENCIES.filter((c) => p.totals[c].used).map((c) => ({ value: p.totals[c].total, currency: c }));
     },
+  };
+}
+
+// A quote in the position's currency: converted with the dólar MEP when the
+// provider prices it in the other one; without a rate there is no price.
+function inCurrency(quote, currency, rate) {
+  if (!quote) return null;
+  if (!quote.currency || quote.currency === currency) return quote;
+  const factor = quote.currency === 'USD' && currency === 'ARS' ? rate : quote.currency === 'ARS' && currency === 'USD' && rate ? 1 / rate : null;
+  if (!factor) return null;
+  return {
+    price: clean(quote.price * factor),
+    previousClose: quote.previousClose == null ? null : clean(quote.previousClose * factor),
+    currency,
   };
 }

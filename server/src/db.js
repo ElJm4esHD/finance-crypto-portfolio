@@ -105,6 +105,17 @@ export const MIGRATIONS = [
     }
     db.exec('DELETE FROM cedear_cash_movements');
   },
+  // v4: last valid price of every source (crypto, CEDEARs/ETF, dólar MEP), so
+  // the app can keep showing it while an API is down (see prices/cache.js).
+  `
+  CREATE TABLE price_cache (
+    source     TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    data       TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (source, key)
+  );
+  `,
 ];
 
 export function openDb(file) {

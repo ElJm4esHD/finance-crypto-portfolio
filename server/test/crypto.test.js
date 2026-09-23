@@ -4,6 +4,7 @@ import { openDb } from '../src/db.js';
 import { createCryptoService } from '../src/crypto/service.js';
 
 const fakePrices = {
+  id: 'test',
   name: 'Test',
   mock: true,
   async getQuotes(assets) {

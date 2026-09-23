@@ -1,4 +1,4 @@
-import { dailyDrift, hash, yesterday } from './mock-util.js';
+import { dailyDrift, fakeIntraday, hash, yesterday } from './mock-util.js';
 
 // MOCK — precios inventados para poder usar la app sin API. Reemplazar por ./binance.js.
 const STABLECOINS = new Set(['USDT', 'USDC', 'DAI', 'FDUSD', 'TUSD', 'BUSD', 'USDP', 'PYUSD']);
@@ -9,19 +9,24 @@ const BASE_USDT = {
   TON: 5.5, SHIB: 0.000022, UNI: 9, NEAR: 5, ARB: 0.9, OP: 1.8,
 };
 
+const priceOf = (asset, date) => (BASE_USDT[asset] ?? 0.05 + hash(asset) * 50) * dailyDrift(asset, date);
+
 export const mockCryptoProvider = {
+  id: 'mock',
   name: 'Simulado',
   mock: true,
   async getQuotes(assets) {
     const out = {};
     for (const asset of assets) {
-      if (STABLECOINS.has(asset)) {
-        out[asset] = { price: 1, previousClose: 1 };
-      } else {
-        const base = BASE_USDT[asset] ?? 0.05 + hash(asset) * 50;
-        out[asset] = { price: base * dailyDrift(asset), previousClose: base * dailyDrift(asset, yesterday()) };
-      }
+      out[asset] = STABLECOINS.has(asset)
+        ? { price: 1, previousClose: 1 }
+        : { price: priceOf(asset), previousClose: priceOf(asset, yesterday()) };
     }
     return out;
+  },
+  async getIntraday(asset) {
+    if (STABLECOINS.has(asset)) return null;
+    const now = Date.now();
+    return { currency: 'USDT', points: fakeIntraday(asset, now - 86400000, now, priceOf(asset)) };
   },
 };
