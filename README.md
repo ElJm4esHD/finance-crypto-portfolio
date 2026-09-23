@@ -3,11 +3,11 @@
 App personal para seguir dos carteras independientes, pensada para correr en un servidor casero dentro de la LAN:
 
 - **Cripto**: saldos por moneda, historial de intercambios (lo que entregás → lo que recibís, con comisión opcional), un objetivo en USDT y el gráfico de crecimiento.
-- **CEDEARs / ETF**: compras y ventas con precio promedio ponderado, dinero disponible en USD y ARS, peso de cada posición, historial y gráfico de crecimiento. Pesos y dólares se muestran por separado, sin tipo de cambio.
+- **CEDEARs / ETF**: compras y ventas con precio promedio ponderado, dinero disponible en USD y ARS, peso de cada posición, historial y gráfico de crecimiento.
 
-Las dos secciones tienen las mismas pestañas (**Cartera**, **Historial**, **Crecimiento**), muestran la variación del día y se pueden **exportar a CSV**. La app se puede **instalar en el celular**.
+Las dos secciones tienen las mismas pestañas (**Cartera**, **Historial**, **Crecimiento**), un selector para ver los montos en **ARS, USD o ambos** (convertidos con el **dólar MEP** del día), muestran la variación del día, un **gráfico intradía** al tocar cada moneda o ticker, y se pueden **exportar a CSV**. La app se puede **instalar en el celular**.
 
-> **Pendiente:** la conexión con las APIs de precios de mercado (Binance para cripto y la que corresponda para CEDEARs/ETF). Mientras tanto la app usa **precios simulados** (la UI lo avisa con la etiqueta "Precios simulados"). Ver [Conectar las APIs de precios](#conectar-las-apis-de-precios).
+Precios en vivo: **Binance** (cripto), **Yahoo Finance** (CEDEARs/ETF) y **DolarAPI** (dólar MEP). Ver [Precios y dólar MEP](#precios-y-dólar-mep).
 
 ## Stack
 
@@ -43,6 +43,8 @@ Variables que se pueden cambiar con un archivo `.env` al lado de `docker-compose
 | `DATA_PATH` | `/srv/finance-crypto-portfolio/data` | Carpeta de datos en el host |
 | `PUID` / `PGID` | `1000` | Usuario con el que corre el contenedor (dueño de `DATA_PATH`) |
 
+En `docker-compose.yml` (sección `environment`) se eligen los proveedores de precios: `CRYPTO_PRICE_PROVIDER` (`binance` o `mock`), `MARKET_PRICE_PROVIDER` (`yahoo` o `mock`) y `FX_PROVIDER` (`dolarapi` o `mock`). `mock` = precios inventados, sin internet.
+
 **No expongas el puerto a internet** (no hagas port forwarding en el router): la app no tiene login porque está pensada solo para la red local.
 
 Actualizar a una versión nueva: `git pull && docker compose up -d --build`.
@@ -72,32 +74,36 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 - Posiciones y dinero disponible se **recalculan desde el historial**, así que borrar una operación o un depósito deja todo consistente (si el borrado dejaría algo en negativo, se rechaza).
 - El dinero disponible se lleva **en centavos**: gastar exactamente lo que hay deja 0 (nunca "-0,00") y cualquier compra, venta o retiro que lo dejaría por debajo de 0 se rechaza.
 - Además del historial puede haber un **saldo inicial** por moneda (setting `cedears_opening_cash_<moneda>`): se usó una sola vez para reemplazar los depósitos y retiros de prueba por el disponible real (migración v3).
-- **Sin tipo de cambio**: el total de la cartera se muestra en pesos y en dólares por separado (posiciones de esa moneda + disponible en esa moneda). Las posiciones se agrupan por moneda y el **peso %** es dentro de su moneda. Sin precio de mercado, una posición se valúa a su costo.
+- Las posiciones se agrupan por moneda y el **peso %** es dentro de su moneda. Sin precio de mercado, una posición se valúa a su costo.
+- El **total de la cartera** suma las dos monedas convertidas con el dólar MEP a la moneda elegida (ARS, USD o ambos). Si todavía no hay cotización, cada moneda se muestra por separado.
 
 ### Variación del día
-- En **Cartera** se ve cuánto subió o bajó cada posición y la cartera completa desde el cierre anterior (en cripto, respecto de hace 24 h). Sale del `previousClose` que da el proveedor de precios: con los precios simulados ya se ve; con las APIs reales queda funcionando sin tocar nada más.
+- En **Cartera** se ve cuánto subió o bajó cada posición y la cartera completa desde el cierre anterior (en cripto, respecto de hace 24 h).
 
 ### Crecimiento (snapshots diarios)
-- Cada hora (`SNAPSHOT_INTERVAL_MINUTES`) y después de cada cambio se actualiza el valor **del día** de cada cartera; el último valor del día queda como su cierre. Al arrancar el servidor se toma uno a los pocos segundos, así que un reinicio no hace perder el día.
-- Cripto se guarda en USDT. CEDEARs/ETF guarda una serie por moneda (ARS y USD, cada una con posiciones + disponible) y el gráfico tiene un selector de moneda.
+- Una vez por día se guarda el valor de cada cartera: **cripto a las 23:59** (en USDT) y **CEDEARs/ETF a las 17:30 de lunes a viernes** (cierre del mercado argentino a las 17:00 más la demora de las cotizaciones). Además, cada cambio actualiza el valor del día en el momento.
+- Si el servidor estaba apagado a esa hora, al arrancar guarda el del día. Con precios desactualizados (API caída) no se guarda nada.
+- CEDEARs/ETF guarda una serie por moneda (ARS y USD, cada una con posiciones + disponible) y el gráfico tiene un selector de moneda.
 - El gráfico muestra vista **Diaria** (últimos 90 días) y agrega **Semanal**, **Mensual** y **Anual** a medida que hay al menos dos períodos de historial.
 
-## Conectar las APIs de precios
+## Precios y dólar MEP
 
-Todo el acceso a precios pasa por **`server/src/prices/`**; el resto de la app no sabe de dónde vienen.
+Todo el acceso a precios pasa por **`server/src/prices/`**; el resto de la app no sabe de dónde vienen. Cada fuente es un proveedor intercambiable (contrato en `server/src/prices/index.js`) con un caché delante.
 
-1. Implementar el proveedor siguiendo el contrato documentado en `server/src/prices/index.js`. Los dos devuelven cotizaciones `{ price, previousClose }` con `getQuotes(...)`:
-   - Cripto → `server/src/prices/binance.js` (precios en USDT; `previousClose` = precio de hace 24 h).
-   - CEDEARs/ETF → `server/src/prices/market.js` (precio en la moneda de la posición y cierre del día anterior).
-   Ambos archivos tienen un `TODO(precios)` con la implementación sugerida.
-2. En `docker-compose.yml`: `CRYPTO_PRICE_PROVIDER: binance` y `MARKET_PRICE_PROVIDER: real`.
-3. `docker compose up -d --build`. La etiqueta "Precios simulados" desaparece sola.
+| Fuente | API | Cuándo se consulta |
+|---|---|---|
+| Cripto | Binance pública (`/api/v3/ticker/24hr` por par `<MONEDA>USDT`, sin API key). USDT = 1 USD | Al abrir la app, con caché de 3 minutos |
+| CEDEARs / ETF | Yahoo Finance `v8/finance/chart/<TICKER>` con el ticker tal cual se cargó (ej. `AAPL.BA`) | Con el mercado abierto (lun a vie, 11:00 a 17:00), caché de 5 minutos. Cerrado, se muestra el último cierre sin volver a consultar |
+| Dólar MEP | DolarAPI `/v1/dolares/bolsa` (compra, venta, hora) | Todos los días a las **10:30** (y al arrancar si falta el del día). Se usa la venta para convertir |
 
-Si un proveedor falla, la app sigue funcionando: muestra un aviso, los valores sin precio aparecen como "Sin precio" y el snapshot del día no se actualiza hasta que vuelvan los precios.
+- **Yahoo Finance no tiene API oficial**: el endpoint puede cambiar o dejar de andar sin aviso. Está aislado en `server/src/prices/yahoo.js`; para reemplazarlo se escribe otro proveedor con el mismo contrato, se registra en `MARKET_PROVIDERS` y se elige con `MARKET_PRICE_PROVIDER`.
+- Si una posición tiene precio en otra moneda (ej. `SPY` cargado en pesos), se convierte con el MEP.
+- **Si una API falla** (timeout, error, límite de pedidos) la app sigue andando: muestra el último valor guardado con la etiqueta "Precio desactualizado desde …" y reintenta al minuto. Cada fuente falla por separado. Los últimos precios se guardan en la base (`price_cache`), así que también sobreviven a un reinicio.
+- **Gráfico intradía**: tocando una moneda se ven las últimas 24 h (velas de 5 minutos de Binance); tocando un ticker, la sesión del día (o la última, con el mercado cerrado).
 
 ## Exportar a CSV
 
-El botón **Exportar** (arriba a la derecha en cada sección) descarga un CSV con la cartera y el historial completo de esa sección: `cripto-AAAA-MM-DD.csv` o `cedears-AAAA-MM-DD.csv`. Está pensado para pasárselo a Claude: bloques con título, números con punto decimal y sin separador de miles, y una línea que avisa si los precios son simulados.
+El botón **Exportar** (arriba a la derecha en cada sección) descarga un CSV con la cartera y el historial completo de esa sección: `cripto-AAAA-MM-DD.csv` o `cedears-AAAA-MM-DD.csv`. Está pensado para pasárselo a Claude: bloques con título, números con punto decimal y sin separador de miles, y una línea que avisa si los precios son simulados o están desactualizados.
 
 ## Instalar en el celular
 
@@ -157,4 +163,7 @@ El script de demo se niega a correr sobre una base que ya tiene datos.
 | DELETE | `/api/cedears/cash-movements/:id` | Borrar movimiento |
 | GET | `/api/cedears/growth` | Series para el gráfico (una por moneda) |
 | GET | `/api/cedears/export.csv` | Totales, cartera e historiales en CSV |
+| GET | `/api/crypto/chart/:asset` | Precio de las últimas 24 h |
+| GET | `/api/cedears/chart/:ticker` | Precio de la sesión del día |
+| GET | `/api/fx/mep` | Dólar MEP guardado |
 | GET | `/api/health` | Healthcheck |
