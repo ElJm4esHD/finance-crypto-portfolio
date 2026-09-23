@@ -27,3 +27,30 @@ services:
       options:
         max-size: "5m"
         max-file: "3"
+
+  # Optional HTTPS for the LAN (needed to install the app on the phone).
+  # Enabled with COMPOSE_PROFILES=https in .env; see README → "Instalar en el celular".
+  # Nothing is exposed to the internet: the domain points to the server's LAN IP
+  # and the certificate is validated through DuckDNS (DNS-01), not by connecting here.
+  https:
+    profiles: ["https"]
+    build: ./proxy
+    image: finance-crypto-portfolio-https:latest
+    container_name: finance-crypto-portfolio-https
+    restart: unless-stopped
+    depends_on:
+      - portfolio
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:-}
+    volumes:
+      # Certificates (renewed automatically).
+      - ${CADDY_DATA_PATH:-/srv/finance-crypto-portfolio/caddy}:/data
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

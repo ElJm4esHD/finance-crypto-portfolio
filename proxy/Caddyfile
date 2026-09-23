@@ -1,0 +1,14 @@
+{
+	# Only HTTPS: no HTTP listener, no redirects.
+	auto_https disable_redirects
+}
+
+{$DOMAIN} {
+	tls {
+		dns duckdns {env.DUCKDNS_TOKEN}
+		# Check the TXT record against public resolvers, not the home router.
+		resolvers 1.1.1.1 8.8.8.8
+	}
+	encode gzip
+	reverse_proxy portfolio:8080
+}
