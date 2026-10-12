@@ -5,6 +5,7 @@ import { cents, clean, isNegative, isNegativeMoney } from '../lib/num.js';
 import { dayChangeSummary, performanceSummary } from '../lib/day-change.js';
 import { oneOf, toDate, toNumber, toTicker } from '../lib/validate.js';
 import { createMarketPrices, marketKey } from '../prices/index.js';
+import { sparklines } from '../lib/sparkline.js';
 
 export const CURRENCIES = ['USD', 'ARS'];
 
@@ -184,6 +185,13 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
   return {
     getPortfolio: valuate,
     getIntraday,
+
+    // Today's session trend of every open position, for the holdings list.
+    getSparklines() {
+      const { positions } = currentState();
+      const tickers = [...new Set([...positions.values()].filter((p) => p.quantity > 0).map((p) => p.ticker))];
+      return sparklines(tickers, prices.getIntraday);
+    },
 
     listOperations() {
       return q.operations.all();

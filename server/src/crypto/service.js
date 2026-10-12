@@ -5,6 +5,7 @@ import { clean, isNegative, EPSILON } from '../lib/num.js';
 import { dayChangeSummary, performanceSummary } from '../lib/day-change.js';
 import { toDateTime, toNumber, toTicker } from '../lib/validate.js';
 import { createCryptoPrices } from '../prices/index.js';
+import { sparklines } from '../lib/sparkline.js';
 
 const GOAL_KEY = 'crypto_goal_usdt';
 // Invested before contributions were recorded (set by migration v5 or by hand).
@@ -162,6 +163,12 @@ export function createCryptoService(db, priceProvider, { log } = {}) {
       const amount = toNumber(amountInput, 'El monto invertido', { allowMin: true });
       setSetting(db, OPENING_KEY, amount);
       return getOpening();
+    },
+
+    // Last 24 h trend of every coin held, for the holdings list.
+    getSparklines() {
+      const assets = q.holdings.all().filter((r) => r.amount > 0 && r.asset !== 'USDT').map((r) => r.asset);
+      return sparklines(assets, prices.getIntraday);
     },
 
     // Price of the last 24 h, for the chart of one coin.
