@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
@@ -8,6 +9,7 @@ import { lastRun, scheduleDaily, WEEKDAYS } from './lib/schedule.js';
 import { localDate } from './lib/dates.js';
 import { getCryptoPriceProvider, getFxProvider, getMarketPriceProvider } from './prices/index.js';
 import { createFxService } from './prices/fx.js';
+import { runDataFixes } from './lib/data-fixes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,13 +20,23 @@ const fxProvider = getFxProvider();
 // Logs through Fastify's logger (only used after the app is built).
 const fx = createFxService({ db, provider: fxProvider, log: { info: (m) => app.log.info(m), warn: (m) => app.log.warn(m) } });
 
-const { app, snapshots, repairs } = buildApp({
+const { app, snapshots, repairs, cedears } = buildApp({
   db,
   cryptoPrices,
   marketPrices,
   fx,
   publicDir: path.resolve(here, '../public'),
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
+});
+
+// One-time corrections of loaded data (lib/data-fixes.js); the history is
+// repaired by the hourly job below.
+await runDataFixes(db, { cedears }, {
+  log: app.log,
+  backup: async (name) => {
+    fs.mkdirSync(path.join(config.dataDir, 'backups'), { recursive: true });
+    await db.backup(path.join(config.dataDir, 'backups', name));
+  },
 });
 
 await app.listen({ port: config.port, host: config.host });
