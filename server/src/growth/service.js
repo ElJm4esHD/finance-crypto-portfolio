@@ -13,10 +13,14 @@ export function createGrowthService(db, { crypto, cedears, fx }) {
   const q = { series: db.prepare('SELECT date, currency, value FROM snapshots WHERE portfolio = ? ORDER BY date') };
   const rates = () => rateLookup(fx.history(), fx.get()?.rate ?? null);
 
-  // Same-day flows are shown as one flag.
-  function mergeFlows(list) {
+  // Same-day flows are shown as one flag. Only those inside the history are
+  // flagged: older ones (e.g. before the history was reset) belong to no point.
+  function mergeFlows(list, points) {
+    const first = points[0]?.date;
     const byDate = new Map();
-    for (const { date, amount } of list) byDate.set(date, (byDate.get(date) ?? 0) + amount);
+    for (const { date, amount } of list) {
+      if (first && date >= first) byDate.set(date, (byDate.get(date) ?? 0) + amount);
+    }
     return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, amount]) => ({ date, amount: clean(amount) }));
   }
 
@@ -41,7 +45,7 @@ export function createGrowthService(db, { crypto, cedears, fx }) {
       points.push({ date: row.date, value: clean(value), invested: clean(convert(invested, 'USD', currency, rate)) });
     }
     const converted = flows.map((f) => ({ date: f.date, amount: convert(f.usdt, 'USD', currency, rateOn(f.date)) }));
-    return { currency, points, flows: mergeFlows(converted.filter((f) => f.amount !== null)), missingRate };
+    return { currency, points, flows: mergeFlows(converted.filter((f) => f.amount !== null), points), missingRate };
   }
 
   // CEDEARs/ETF keep one snapshot per currency: the portfolio is their sum,
@@ -83,7 +87,7 @@ export function createGrowthService(db, { crypto, cedears, fx }) {
       date: m.date,
       amount: convert(m.type === 'deposit' ? m.amount : -m.amount, m.currency, currency, rateOn(m.date)),
     }));
-    return { currency, points, flows: mergeFlows(converted.filter((f) => f.amount !== null)), missingRate };
+    return { currency, points, flows: mergeFlows(converted.filter((f) => f.amount !== null), points), missingRate };
   }
 
   return {

@@ -94,3 +94,12 @@ test('without any dólar MEP the history cannot be converted', () => {
   assert.equal(growth.get('crypto', 'USD').points.length, 1);
   assert.deepEqual(growth.get('crypto', 'ARS'), { currency: 'ARS', points: [], flows: [], missingRate: true });
 });
+
+test('contributions older than the first point are not flagged (history reset)', async () => {
+  const { crypto, snap, growth } = setup();
+  await crypto.createFlow({ type: 'deposit', asset: 'USDT', amount: 500, executedAt: '2026-08-01T10:00' });
+  snap('crypto', '2026-09-01', 'USDT', 500);
+  const g = growth.get('crypto', 'USD');
+  assert.deepEqual(g.points, [{ date: '2026-09-01', value: 500, invested: 500 }]);
+  assert.deepEqual(g.flows, []);
+});

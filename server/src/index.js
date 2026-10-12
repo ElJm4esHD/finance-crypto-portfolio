@@ -31,7 +31,7 @@ const { app, snapshots, repairs, cedears } = buildApp({
 
 // One-time corrections of loaded data (lib/data-fixes.js); the history is
 // repaired by the hourly job below.
-await runDataFixes(db, { cedears }, {
+await runDataFixes(db, { cedears, snapshots }, {
   log: app.log,
   backup: async (name) => {
     fs.mkdirSync(path.join(config.dataDir, 'backups'), { recursive: true });
@@ -75,6 +75,16 @@ async function catchUp() {
     const last = lastRun(now, at, days);
     if (last && localDate(last) === localDate(now) && !snapshots.has(portfolio)) await snapshots.capture(portfolio);
   }
+  await startHistory();
+}
+
+// A portfolio without any history (new, or just reset) gets its first point
+// right away instead of waiting for its daily time: it is the zero the
+// growth chart measures from. Retried hourly while prices are unavailable.
+async function startHistory() {
+  for (const portfolio of ['crypto', 'cedears']) {
+    if (snapshots.isEmpty(portfolio)) await snapshots.capture(portfolio);
+  }
 }
 setTimeout(catchUp, 3_000);
 
@@ -83,6 +93,7 @@ setTimeout(catchUp, 3_000);
 const hourly = async () => {
   await dailyBackup(db, config.dataDir, config.backupKeep, app.log);
   await repairs.process();
+  await startHistory();
 };
 setTimeout(hourly, 5_000);
 const backupTimer = setInterval(hourly, 60 * 60_000);

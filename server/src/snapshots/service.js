@@ -10,6 +10,7 @@ export function createSnapshotService(db, sources, log = console) {
       INSERT INTO snapshots (portfolio, date, currency, value) VALUES (?, ?, ?, ?)
       ON CONFLICT (portfolio, date, currency) DO UPDATE SET value = excluded.value`),
     exists: db.prepare('SELECT 1 FROM snapshots WHERE portfolio = ? AND date = ? LIMIT 1'),
+    any: db.prepare('SELECT 1 FROM snapshots WHERE portfolio = ? LIMIT 1'),
   };
 
   // Records (or refreshes) today's snapshot. Running it many times a day is
@@ -31,6 +32,18 @@ export function createSnapshotService(db, sources, log = console) {
     capture,
 
     has: (portfolio, date = localDate()) => Boolean(q.exists.get(portfolio, date)),
+
+    // True when the portfolio has no history at all (new, or just reset).
+    isEmpty: (portfolio) => !q.any.get(portfolio),
+
+    // Wipes the whole growth history of both portfolios (and any pending
+    // correction of it). Holdings, operations and cash are not touched.
+    clear() {
+      db.transaction(() => {
+        db.prepare('DELETE FROM snapshots').run();
+        db.prepare('DELETE FROM snapshot_repairs').run();
+      })();
+    },
 
     async captureAll() {
       for (const p of PORTFOLIOS) await capture(p);

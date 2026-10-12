@@ -3,7 +3,7 @@ import { getSetting, setSetting } from '../db.js';
 // One-time corrections of the owner's data, applied on start with the same
 // corrections the app offers in "Editar", so the past snapshots are repaired
 // too and nothing new shows up in the history. Each one runs once (a settings
-// flag marks it done) and only on a database that already has CEDEAR data.
+// flag marks it done) and only on a database that already has data.
 // If one fails it is retried on the next start. Before applying any, a copy
 // of the database is saved (backup(name), see index.js).
 export const DATA_FIXES = [
@@ -24,13 +24,25 @@ export const DATA_FIXES = [
       return `disponible ARS ${cash.ARS} · USD ${cash.USD}`;
     },
   },
+  {
+    // The growth history still carried test data (fake deposits, test edits)
+    // that patching did not fully remove: start it over from today. The first
+    // point is captured right after start (index.js) and becomes the zero of
+    // the chart. Holdings, operations and cash stay as they are.
+    key: 'data_fix_2026_10_growth_reset',
+    run({ snapshots }) {
+      snapshots.clear();
+      return 'historial de crecimiento borrado; arranca hoy';
+    },
+  },
 ];
 
 export async function runDataFixes(db, services, { log = console, fixes = DATA_FIXES, backup = null } = {}) {
   const hasData = db
     .prepare(
       `SELECT EXISTS (SELECT 1 FROM cedear_operations) OR EXISTS (SELECT 1 FROM cedear_cash_movements)
-         OR EXISTS (SELECT 1 FROM settings WHERE key LIKE 'cedears_opening_cash_%') AS yes`,
+         OR EXISTS (SELECT 1 FROM settings WHERE key LIKE 'cedears_opening_cash_%')
+         OR EXISTS (SELECT 1 FROM crypto_holdings) OR EXISTS (SELECT 1 FROM snapshots) AS yes`,
     )
     .get().yes;
   const pending = fixes.filter((fix) => !getSetting(db, fix.key));
