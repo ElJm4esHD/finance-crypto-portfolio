@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
-import { DataVersion, useHashRoute } from './hooks.js';
+import { DataVersion, PHONE_QUERY, useHashRoute, useMediaQuery } from './hooks.js';
 import { Icon } from './components/ui.jsx';
 import { CryptoHoldings } from './crypto/Holdings.jsx';
 import { CryptoExchanges } from './crypto/Exchanges.jsx';
@@ -13,13 +13,13 @@ import { OperationModal } from './cedears/OperationModal.jsx';
 const SECTIONS = {
   cripto: {
     label: 'Cripto',
-    action: 'Nuevo intercambio',
+    action: 'Nuevo movimiento',
     exportUrl: '/api/crypto/export.csv',
     Modal: ExchangeModal,
     tabs: [
       { id: 'cartera', label: 'Cartera', icon: 'wallet', View: CryptoHoldings },
       { id: 'historial', label: 'Historial', icon: 'list', View: CryptoExchanges },
-      { id: 'crecimiento', label: 'Crecimiento', icon: 'chart', View: CryptoGrowth },
+      { id: 'crecimiento', label: 'Crecimiento', icon: 'chart', View: CryptoGrowth, phoneOnly: true },
     ],
   },
   cedears: {
@@ -30,7 +30,7 @@ const SECTIONS = {
     tabs: [
       { id: 'cartera', label: 'Cartera', icon: 'wallet', View: CedearPortfolio },
       { id: 'historial', label: 'Historial', icon: 'list', View: CedearHistory },
-      { id: 'crecimiento', label: 'Crecimiento', icon: 'chart', View: CedearGrowth },
+      { id: 'crecimiento', label: 'Crecimiento', icon: 'chart', View: CedearGrowth, phoneOnly: true },
     ],
   },
 };
@@ -44,15 +44,18 @@ export function App() {
   const dataCtx = useMemo(() => ({ version, bump: () => setVersion((v) => v + 1) }), [version]);
   const [sectionId, tabId] = useHashRoute();
   const [modalOpen, setModalOpen] = useState(false);
+  const isPhone = useMediaQuery(PHONE_QUERY);
 
   const sid = SECTIONS[sectionId] ? sectionId : 'cripto';
   const section = SECTIONS[sid];
-  const tab = section.tabs.find((t) => t.id === tabId) ?? section.tabs[0];
+  // On desktop the growth chart is part of Cartera: no tab of its own.
+  const tabs = section.tabs.filter((t) => isPhone || !t.phoneOnly);
+  const tab = tabs.find((t) => t.id === tabId) ?? tabs[0];
   const { View } = tab;
   const openModal = () => setModalOpen(true);
 
   const tabLinks = (className) =>
-    section.tabs.map((t) => (
+    tabs.map((t) => (
       <a href={`#/${sid}/${t.id}`} class={`${className} ${t.id === tab.id ? 'active' : ''}`} aria-current={t.id === tab.id ? 'page' : undefined}>
         {className === 'bottom-tab' && <Icon name={t.icon} />}
         <span>{t.label}</span>
@@ -77,7 +80,12 @@ export function App() {
 
       <header class="topbar">
         <div class="container topbar-inner">
-          <span class="brand">Mi cartera</span>
+          <span class="brand">
+            <span class="brand-mark">
+              <Icon name="logo" />
+            </span>
+            Mi cartera
+          </span>
           <nav class="section-switch" aria-label="Sección">
             {Object.entries(SECTIONS).map(([id, s]) => (
               <a href={`#/${id}`} class={id === sid ? 'active' : ''} aria-current={id === sid ? 'page' : undefined}>
@@ -85,24 +93,19 @@ export function App() {
               </a>
             ))}
           </nav>
-          {exportLink('icon-btn phone-only', false)}
-        </div>
-      </header>
-
-      {/* Desktop: tabs and actions under the header. */}
-      <div class="subbar desktop-only">
-        <div class="container subbar-inner">
-          <nav class="tabs" aria-label={section.label}>
+          {/* Desktop: tabs and actions in the same bar. */}
+          <nav class="tabs desktop-only" aria-label={section.label}>
             {tabLinks('tab')}
           </nav>
-          <div class="subbar-actions">
-            {exportLink('btn btn-secondary', true)}
-            <button type="button" class="btn btn-primary" onClick={openModal}>
+          <div class="topbar-actions">
+            {exportLink('icon-btn phone-only', false)}
+            {exportLink('btn btn-secondary desktop-only', true)}
+            <button type="button" class="btn btn-primary desktop-only" onClick={openModal}>
               <Icon name="plus" /> <span>{section.action}</span>
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
       <main class="container main" key={`${sid}/${tab.id}`}>
         <View onNew={openModal} onNewOperation={openModal} />

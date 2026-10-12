@@ -1,103 +1,143 @@
 import { useState } from 'preact/hooks';
 import { api } from '../api.js';
-import { fmtAmount, fmtMoney, fmtPrice, parseNumber, toInputValue } from '../format.js';
-import { useApi, useMutation, useStoredState } from '../hooks.js';
-import { DayChange, EmptyState, ErrorMessage, Field, Icon, Loading, Modal, PctChange, PriceNotice } from '../components/ui.jsx';
-import { convert, DisplayCurrency, MepNote, Money } from '../components/money.jsx';
-import { PriceChartModal } from '../components/PriceChartModal.jsx';
-import { GoalProgress } from './GoalProgress.jsx';
+import { fmtAmount, fmtMoney, fmtPct, fmtPrice, parseNumber, toInputValue } from '../format.js';
+import { PHONE_QUERY, useApi, useMediaQuery, useMutation, useStoredState } from '../hooks.js';
+import { ChangeChip, EmptyState, ErrorMessage, Field, Icon, Loading, Modal, PriceNotice, SignedChange } from '../components/ui.jsx';
+import { convert, CurrencySelect, MepNote } from '../components/money.jsx';
+import { AssetList } from '../components/AssetList.jsx';
+import { GrowthPanel } from '../components/GrowthPanel.jsx';
+import { GoalModal, GoalProgress } from './GoalProgress.jsx';
 
 // Crypto is valued in USDT (1:1 with USD); ARS uses the dólar MEP of the day.
-const unit = (c) => (c === 'USD' ? 'USDT' : c);
+export const CRYPTO_CURRENCY_KEY = 'currency:crypto';
+export const cryptoUnit = (currency) => (currency === 'USD' ? 'USDT' : 'ARS');
 
 export function CryptoHoldings() {
   const { data, error, loading } = useApi('/crypto/holdings');
+  const { data: sparks } = useApi('/crypto/sparklines');
+  const isPhone = useMediaQuery(PHONE_QUERY);
+  const [picked, setPicked] = useStoredState(CRYPTO_CURRENCY_KEY, 'USD');
   const [editing, setEditing] = useState(null); // { asset, amount } | { asset: '' } for a new one
-  const [chart, setChart] = useState(null); // asset whose intraday chart is open
+  const [modal, setModal] = useState(null); // 'opening' | 'goal'
   const [showEmpty, setShowEmpty] = useState(false);
-  const [display, setDisplay] = useStoredState('display-currency:crypto', 'USD');
 
   if (loading) return <Loading />;
   if (!data) return <ErrorMessage>{error}</ErrorMessage>;
 
+  const rate = data.fx?.rate ?? null;
+  const currency = rate && picked === 'ARS' ? 'ARS' : 'USD';
+  const unit = cryptoUnit(currency);
+  const conv = (v) => convert(v, 'USDT', currency, rate);
+
   const withBalance = data.holdings.filter((h) => h.amount > 0);
   const empty = data.holdings.filter((h) => h.amount === 0);
-  const rows = showEmpty ? [...withBalance, ...empty] : withBalance;
-  const rate = data.fx?.rate ?? null;
-  const heroCurrencies = !rate ? ['USD'] : display === 'both' ? ['USD', 'ARS'] : [display];
-  const cellDisplay = rate ? display : 'USD';
+  const usdt = data.holdings.find((h) => h.asset === 'USDT')?.amount ?? 0;
+
+  const rows = (showEmpty ? [...withBalance, ...empty] : withBalance).map((h) => ({
+    key: h.asset,
+    symbol: h.asset,
+    sub: `${fmtAmount(h.amount)} · ${h.value === null ? (h.amount > 0 ? 'sin precio' : 'sin saldo') : fmtMoney(conv(h.value), unit)}`,
+    price: h.amount > 0 ? fmtPrice(conv(h.price), unit) : '—',
+    dayChangePct: h.amount > 0 ? h.dayChangePct : null,
+    spark: h.asset === 'USDT' ? [1, 1] : sparks?.[h.asset],
+    dimmed: h.amount === 0,
+    detail: [
+      ['Cantidad', fmtAmount(h.amount)],
+      ['Precio', h.amount > 0 ? fmtPrice(conv(h.price), unit) : '—'],
+      ['Valor', h.value === null ? '—' : fmtMoney(conv(h.value), unit)],
+      ['Peso', fmtPct(h.weight)],
+      ['Hoy', h.dayChangePct === null ? '—' : fmtPct(h.dayChangePct, { signed: true, digits: 2 })],
+    ],
+    actions: (
+      <button type="button" class="btn btn-secondary btn-sm" onClick={() => setEditing(h)}>
+        <Icon name="edit" /> Corregir saldo
+      </button>
+    ),
+  }));
 
   return (
-    <>
-      <section class="hero">
-        <p class="hero-label">
-          Valor total <PriceNotice source={data.priceSource} />
-          <DisplayCurrency value={display} onChange={setDisplay} />
-        </p>
-        <div class="hero-totals">
-          {heroCurrencies.map((c) => (
-            <div>
-              <p class="hero-value">{fmtMoney(convert(data.total, 'USDT', c, rate), unit(c))}</p>
-              <DayChange change={convert(data.dayChange, 'USDT', c, rate)} pct={data.dayChangePct} currency={unit(c)} />
-            </div>
-          ))}
+    <div class="overview">
+      <section class="card hero-card overview-hero">
+        <div class="hero-top">
+          <p class="hero-label">Valor total</p>
+          <PriceNotice source={data.priceSource} />
+          <CurrencySelect value={currency} onChange={setPicked} disabled={!rate} />
         </div>
-        {display !== 'USD' && <MepNote fx={data.fx} />}
-        {data.goal && <GoalProgress total={data.total} goal={data.goal} compact />}
+        <p class="hero-value">{fmtMoney(conv(data.total), unit)}</p>
+        <div class="hero-meta">
+          <ChangeChip pct={data.dayChangePct} dash={false} />
+          {data.dayChange !== null && (
+            <span class="muted">
+              <SignedChange change={conv(data.dayChange)} currency={unit} /> hoy
+            </span>
+          )}
+        </div>
+        {!isPhone && <GrowthPanel section="crypto" currency={currency} />}
       </section>
 
-      <section class="card">
+      <aside class="overview-aside">
+        <section class="card" aria-label="Resumen">
+          <div class="stats">
+            <div class="stat">
+              <span class="stat-label">
+                Invertido
+                <button type="button" class="icon-btn sm" title="Ajustar lo invertido antes de registrar aportes" aria-label="Ajustar invertido" onClick={() => setModal('opening')}>
+                  <Icon name="edit" />
+                </button>
+              </span>
+              <span class="stat-value">{fmtMoney(conv(data.invested), unit)}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Rendimiento</span>
+              <span class="stat-value">
+                <SignedChange change={conv(data.performance)} currency={unit} />
+                {data.performancePct !== null && (
+                  <span class={`sub change-value ${data.performance >= 0 ? 'up' : 'down'}`}>{fmtPct(data.performancePct, { signed: true })}</span>
+                )}
+              </span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Disponible</span>
+              <span class="stat-value">{fmtMoney(usdt, 'USDT')}</span>
+            </div>
+            <div class="stat-group">
+              {data.goal ? (
+                <>
+                  <div class="stat">
+                    <span class="stat-label">Objetivo</span>
+                    <button type="button" class="link-btn" style={{ padding: 0 }} onClick={() => setModal('goal')}>
+                      Cambiar
+                    </button>
+                  </div>
+                  <GoalProgress total={data.total} goal={data.goal} compact />
+                </>
+              ) : (
+                <button type="button" class="link-btn" style={{ padding: 0 }} onClick={() => setModal('goal')}>
+                  Definir un objetivo en USDT
+                </button>
+              )}
+            </div>
+            <MepNote fx={data.fx} />
+          </div>
+        </section>
+      </aside>
+
+      <section class="card overview-list">
         <div class="card-head">
-          <h2 class="card-title">Monedas</h2>
-          <button type="button" class="btn btn-secondary" onClick={() => setEditing({ asset: '' })}>
+          <h2 class="card-title">Activos</h2>
+          <button type="button" class="btn btn-secondary btn-sm" onClick={() => setEditing({ asset: '' })}>
             <Icon name="plus" /> Agregar moneda
           </button>
         </div>
-
         {data.holdings.length === 0 ? (
           <EmptyState title="Todavía no cargaste saldos">
-            Agregá cada moneda con la cantidad que tenés hoy. Después, cada intercambio los actualiza solo.
+            Registrá lo que tenés con "Nuevo movimiento → Aporte" (cuenta como plata invertida) o agregá la moneda con su saldo actual.
           </EmptyState>
         ) : (
           <>
-            <table class="table responsive">
-              <thead>
-                <tr>
-                  <th>Moneda</th>
-                  <th class="num">Cantidad</th>
-                  <th class="num">Precio</th>
-                  <th class="num">Valor</th>
-                  <th class="num">Hoy</th>
-                  <th class="actions" aria-label="Acciones" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((h) => (
-                  <tr class={h.amount === 0 ? 'dimmed' : ''}>
-                    <td class="ticker" data-label="Moneda">
-                      <button type="button" class="symbol-btn" title={`Ver gráfico de ${h.asset}`} onClick={() => setChart(h.asset)}>
-                        {h.asset}
-                      </button>
-                    </td>
-                    <td class="num" data-label="Cantidad">{fmtAmount(h.amount)}</td>
-                    <td class="num secondary" data-label="Precio">
-                      {h.amount > 0 ? (cellDisplay === 'ARS' ? fmtPrice(convert(h.price, 'USDT', 'ARS', rate), 'ARS') : fmtPrice(h.price, 'USDT')) : '—'}
-                    </td>
-                    <td class="num strong" data-label="Valor">
-                      {h.value === null ? (h.amount > 0 ? 'Sin precio' : '—') : <Money amount={h.value} currency="USDT" display={cellDisplay} rate={rate} />}
-                    </td>
-                    <td class="num" data-label="Hoy">{h.amount > 0 ? <PctChange value={h.dayChangePct} /> : '—'}</td>
-                    <td class="actions">
-                      <button type="button" class="icon-btn" aria-label={`Corregir saldo de ${h.asset}`} title="Corregir saldo" onClick={() => setEditing(h)}>
-                        <Icon name="edit" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <AssetList kind="crypto" rows={rows} />
             {empty.length > 0 && (
-              <button type="button" class="link-btn" onClick={() => setShowEmpty(!showEmpty)}>
+              <button type="button" class="link-btn list-toggle" onClick={() => setShowEmpty(!showEmpty)}>
                 {showEmpty ? 'Ocultar monedas sin saldo' : `Mostrar monedas sin saldo (${empty.length})`}
               </button>
             )}
@@ -106,11 +146,14 @@ export function CryptoHoldings() {
       </section>
 
       {editing && <HoldingModal holding={editing} onClose={() => setEditing(null)} />}
-      {chart && <PriceChartModal kind="crypto" symbol={chart} onClose={() => setChart(null)} />}
-    </>
+      {modal === 'opening' && <OpeningModal onClose={() => setModal(null)} />}
+      {modal === 'goal' && <GoalModal goal={data.goal} onClose={() => setModal(null)} />}
+    </div>
   );
 }
 
+// Corrects a balance by hand. Not a contribution: it does not change what
+// was invested (that is "Nuevo movimiento → Aporte / Retiro").
 function HoldingModal({ holding, onClose }) {
   const isNew = !holding.asset;
   const [asset, setAsset] = useState(holding.asset);
@@ -126,7 +169,7 @@ function HoldingModal({ holding, onClose }) {
   }
 
   async function remove() {
-    if (!window.confirm(`¿Eliminar ${holding.asset} de la lista? El historial de intercambios no se borra.`)) return;
+    if (!window.confirm(`¿Eliminar ${holding.asset} de la lista? El historial no se borra.`)) return;
     const { ok } = await run(() => api.del(`/crypto/holdings/${encodeURIComponent(holding.asset)}`));
     if (ok) onClose();
   }
@@ -139,7 +182,7 @@ function HoldingModal({ holding, onClose }) {
             <input value={asset} onInput={(e) => setAsset(e.currentTarget.value.toUpperCase())} autofocus required maxLength={20} autocomplete="off" />
           </Field>
         )}
-        <Field label="Cantidad que tenés hoy">
+        <Field label="Cantidad que tenés hoy" hint="Es una corrección: no cuenta como plata invertida. Para registrar plata nueva usá Nuevo movimiento → Aporte.">
           <input value={amount} onInput={(e) => setAmount(e.currentTarget.value)} inputMode="decimal" autocomplete="off" required autofocus={!isNew} placeholder="0,00" />
         </Field>
         <ErrorMessage>{error}</ErrorMessage>
@@ -149,6 +192,45 @@ function HoldingModal({ holding, onClose }) {
               Eliminar moneda
             </button>
           )}
+          <button type="submit" class="btn btn-primary" disabled={busy}>
+            Guardar
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// What was invested before contributions were recorded in the app.
+function OpeningModal({ onClose }) {
+  const { data } = useApi('/crypto/invested-opening');
+  const [value, setValue] = useState(null);
+  const { run, busy, error, setError } = useMutation();
+  const shown = value ?? (data ? toInputValue(data.amount) : '');
+
+  async function save(e) {
+    e.preventDefault();
+    const n = parseNumber(shown);
+    if (n === null || Number.isNaN(n) || n < 0) return setError('Ingresá un monto válido.');
+    const { ok } = await run(() => api.put('/crypto/invested-opening', { amount: n }));
+    if (ok) onClose();
+  }
+
+  return (
+    <Modal title="Invertido inicial" onClose={onClose}>
+      <form onSubmit={save} class="form">
+        <p class="form-note">
+          Lo que habías puesto en cripto antes de registrar aportes en la app. Los aportes y retiros que cargues se suman a este monto; el
+          rendimiento es el valor actual menos el total invertido.
+        </p>
+        <Field label="Monto en USDT">
+          <input value={shown} onInput={(e) => setValue(e.currentTarget.value)} inputMode="decimal" placeholder="0,00" autocomplete="off" autofocus required />
+        </Field>
+        <ErrorMessage>{error}</ErrorMessage>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onClick={onClose}>
+            Cancelar
+          </button>
           <button type="submit" class="btn btn-primary" disabled={busy}>
             Guardar
           </button>

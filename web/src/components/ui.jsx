@@ -108,25 +108,30 @@ export function PriceNotice({ source }) {
 }
 
 // Day changes are small: two decimals, and the color follows what is shown.
-const dayTone = (pct) => (pct >= 0.005 ? 'up' : pct <= -0.005 ? 'down' : '');
+export const toneOf = (pct) => (pct >= 0.005 ? 'up' : pct <= -0.005 ? 'down' : '');
 
-// "Hoy +1,24 % (+140,00 USDT)" — change since the previous close. Hidden without data.
-export function DayChange({ change, pct, currency }) {
-  if (pct == null) return null;
+// "▲ 1,24 %" on a tinted background. Hidden without data unless `dash`.
+export function ChangeChip({ pct, dash = true }) {
+  if (pct == null) return dash ? <span class="chip">—</span> : null;
+  const tone = toneOf(pct);
   return (
-    <p class="day-change">
-      <span class="muted">Hoy</span>{' '}
-      <span class={`change-value ${dayTone(pct)}`}>
-        {fmtPct(pct, { signed: true, digits: 2 })} ({fmtSignedMoney(change, currency)})
-      </span>
-    </p>
+    <span class={`chip ${tone}`}>
+      {tone && <Icon name={tone === 'up' ? 'caretUp' : 'caretDown'} filled />}
+      {fmtPct(Math.abs(pct), { digits: 2 })}
+    </span>
   );
 }
 
-// Day change of one position, for table cells ("+2,41 %").
-export function PctChange({ value }) {
-  if (value == null) return '—';
-  return <span class={`change-value ${dayTone(value)}`}>{fmtPct(value, { signed: true, digits: 2 })}</span>;
+// "+140,00 USDT (+1,24 %)" colored by sign.
+export function SignedChange({ change, pct, currency }) {
+  if (change == null) return '—';
+  const tone = toneOf(pct ?? change);
+  return (
+    <span class={`change-value ${tone}`}>
+      {fmtSignedMoney(change, currency)}
+      {pct != null && ` (${fmtPct(pct, { signed: true, digits: 2 })})`}
+    </span>
+  );
 }
 
 export function EmptyState({ title, children, action }) {
@@ -154,11 +159,25 @@ const ICONS = {
   wallet: 'M4 7h14a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2V7zM4 7l11-3v3M16 13.5h.01',
   list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
   chart: 'M4 17l5-5 4 4 7-7M15 9h5v5',
+  chevron: 'M6 9l6 6 6-6',
+  caretUp: 'M12 6l7 11H5z',
+  caretDown: 'M12 18L5 7h14z',
+  logo: 'M5 16l5-5 3.5 3.5L19 8',
 };
 
-export function Icon({ name }) {
+// `filled` for solid shapes (carets).
+export function Icon({ name, filled = false }) {
   return (
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg
+      class="icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke={filled ? 'none' : 'currentColor'}
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
       <path d={ICONS[name]} />
     </svg>
   );

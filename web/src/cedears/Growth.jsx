@@ -1,35 +1,26 @@
-import { useState } from 'preact/hooks';
-import { useApi } from '../hooks.js';
-import { ErrorMessage, Loading, Segmented } from '../components/ui.jsx';
-import { GrowthView } from '../components/GrowthView.jsx';
+import { useApi, useStoredState } from '../hooks.js';
+import { ErrorMessage, Loading } from '../components/ui.jsx';
+import { CurrencySelect, MepNote } from '../components/money.jsx';
+import { GrowthPanel } from '../components/GrowthPanel.jsx';
+import { CEDEAR_CURRENCY_KEY } from './Portfolio.jsx';
 
-const ORDER = ['ARS', 'USD'];
-
+// Phone only: the growth chart has its own tab there (on desktop it lives in
+// Cartera). Both currencies added up in the one picked, as in Cartera.
 export function CedearGrowth() {
-  const { data, error, loading } = useApi('/cedears/growth');
-  const [currency, setCurrency] = useState(null);
+  const { data, error, loading } = useApi('/fx/mep');
+  const [picked, setPicked] = useStoredState(CEDEAR_CURRENCY_KEY, 'ARS');
   if (loading) return <Loading />;
   if (!data) return <ErrorMessage>{error}</ErrorMessage>;
-
-  const currencies = [...data.currencies].sort((a, b) => ORDER.indexOf(a.currency) - ORDER.indexOf(b.currency));
-  const current = currencies.find((c) => c.currency === currency) ?? currencies[0] ?? null;
+  const currency = picked === 'USD' ? 'USD' : 'ARS';
 
   return (
-    <>
-      <GrowthView
-        data={current}
-        titleExtra={
-          currencies.length > 1 && (
-            <Segmented
-              label="Moneda"
-              value={current.currency}
-              onChange={setCurrency}
-              options={currencies.map((c) => ({ value: c.currency, label: c.currency }))}
-            />
-          )
-        }
-      />
-      <p class="muted small footnote">Valor de cada moneda por separado: posiciones a precio de mercado más el dinero disponible.</p>
-    </>
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Crecimiento</h2>
+        <CurrencySelect value={currency} onChange={setPicked} disabled={!data.mep} />
+      </div>
+      <GrowthPanel section="cedears" currency={currency} />
+      <MepNote fx={data.mep} />
+    </section>
   );
 }
