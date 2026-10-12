@@ -91,7 +91,7 @@ function CashMovements() {
       <ul class="list">
         {data.map((m) => (
           <li class="list-row has-badge">
-            <span class={`badge ${m.type === 'deposit' ? 'badge-up' : 'badge-down'}`}>{m.type === 'deposit' ? 'Depósito' : 'Retiro'}</span>
+            <span class="badge badge-flag">{m.type === 'deposit' ? 'Depósito' : 'Retiro'}</span>
             <div class="list-main">
               <p class="muted small">
                 {fmtDate(m.date)}
