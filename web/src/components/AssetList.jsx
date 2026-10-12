@@ -9,7 +9,7 @@ const initials = (symbol) => symbol.replace(/\.[A-Z]+$/, '').slice(0, 4);
 // Market-style list: symbol, trend of the day, price and day change. Tapping
 // a row opens its details (`detail`, the figures of the old table) and the
 // intraday price chart. rows: [{ key, symbol, label?, sub, price,
-// dayChangePct, spark, detail, actions, dimmed }]; `symbol` is what the
+// dayChangePct, spark, detail, actions, dimmed, color? }]; `symbol` is what the
 // chart is asked for, `label` (default: symbol) what is shown.
 export function AssetList({ kind, rows }) {
   const [open, setOpen] = useState(null);
@@ -26,7 +26,7 @@ export function AssetList({ kind, rows }) {
               title={isOpen ? 'Cerrar' : `Ver detalle y gráfico de ${r.label ?? r.symbol}`}
               onClick={() => setOpen(isOpen ? null : r.key)}
             >
-              <span class="asset-icon" aria-hidden="true">
+              <span class="asset-icon" aria-hidden="true" style={r.color ? { boxShadow: `inset 0 0 0 2px ${r.color}` } : undefined}>
                 {initials(r.symbol)}
               </span>
               <span class="asset-name">

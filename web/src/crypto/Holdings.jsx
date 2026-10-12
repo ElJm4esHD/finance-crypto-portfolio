@@ -5,6 +5,7 @@ import { PHONE_QUERY, useApi, useMediaQuery, useMutation, useStoredState } from 
 import { ChangeChip, EmptyState, ErrorMessage, Field, Icon, Loading, Modal, PriceNotice, SignedChange } from '../components/ui.jsx';
 import { convert, CurrencySelect, MepNote } from '../components/money.jsx';
 import { AssetList } from '../components/AssetList.jsx';
+import { distribution, Distribution } from '../components/Distribution.jsx';
 import { GrowthPanel } from '../components/GrowthPanel.jsx';
 import { GoalModal, GoalProgress } from './GoalProgress.jsx';
 import { EditAsset } from './EditAsset.jsx';
@@ -34,8 +35,11 @@ export function CryptoHoldings() {
   const empty = data.holdings.filter((h) => h.amount === 0);
   const usdt = data.holdings.find((h) => h.asset === 'USDT')?.amount ?? 0;
 
+  const pie = distribution(withBalance.filter((h) => h.value !== null).map((h) => ({ symbol: h.asset, value: conv(h.value) })));
+
   const rows = (showEmpty ? [...withBalance, ...empty] : withBalance).map((h) => ({
     key: h.asset,
+    color: pie.colors.get(h.asset),
     symbol: h.asset,
     sub: `${fmtAmount(h.amount)} · ${h.value === null ? (h.amount > 0 ? 'sin precio' : 'sin saldo') : fmtMoney(conv(h.value), unit)}`,
     price: h.amount > 0 ? fmtPrice(conv(h.price), unit) : '—',
@@ -121,6 +125,7 @@ export function CryptoHoldings() {
             <MepNote fx={data.fx} />
           </div>
         </section>
+        <Distribution title="Distribución por moneda" slices={pie.slices} currency={unit} />
       </aside>
 
       <section class="card overview-list">

@@ -22,6 +22,13 @@
   --warn: #ffcb57;
   --warn-soft: rgb(255 203 87 / 0.14);
   --flag: #b495ff;
+  /* Categorical slots for the distribution (dark steps, validated order). */
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-other: #5b6578;
   --grid: #1d2532;
   --radius: 20px;
   --radius-sm: 12px;
@@ -126,7 +133,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 .overview-hero { grid-area: hero; }
 .overview-list { grid-area: list; }
-.overview-aside { grid-area: aside; position: sticky; top: 92px; display: flex; flex-direction: column; gap: 20px; }
+.overview-aside { grid-area: aside; display: flex; flex-direction: column; gap: 20px; }
 
 .hero-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .hero-label { color: var(--ink-2); font-weight: 600; font-size: 0.9375rem; }
@@ -183,6 +190,25 @@ button, input, select { font: inherit; color: inherit; }
 .goal-pct { font-size: 2.5rem; font-weight: 750; line-height: 1; letter-spacing: -0.03em; }
 .goal-text { font-size: 1rem; color: var(--ink-2); }
 .goal-text strong { color: var(--ink); }
+
+/* ── Distribution (donut) ───────────────────────────────── */
+.distribution-body { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.donut { width: 168px; height: 168px; display: block; }
+.donut .slice { stroke: var(--surface); stroke-width: 2; transition: opacity 0.15s; cursor: default; }
+.donut .faded, .legend-list .faded { opacity: 0.35; }
+.donut-label { fill: var(--ink); font-size: 17px; font-weight: 800; }
+.donut-sub { fill: var(--ink-3); font-size: 11px; font-weight: 600; }
+.legend-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; }
+.legend-list li {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; grid-template-areas: 'dot sym pct' '. val val';
+  column-gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--border); transition: opacity 0.15s;
+}
+.legend-list li:first-child { border-top: 0; }
+.legend-list i { grid-area: dot; width: 10px; height: 10px; border-radius: 50%; }
+.legend-symbol { grid-area: sym; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend-pct { grid-area: pct; font-weight: 700; }
+.legend-value { grid-area: val; color: var(--ink-3); font-size: 0.8125rem; }
+.distribution .fx-note { margin-top: 10px; }
 
 /* ── Holdings list ──────────────────────────────────────── */
 .assets { list-style: none; margin: 0 -12px; padding: 0; }
@@ -415,9 +441,18 @@ input[type='date'], input[type='datetime-local'] { color-scheme: dark; }
 }
 
 /* ── Narrower desktops: summary goes under the hero ─────── */
+/* Narrower: one column. The summary goes under the hero, the distribution
+   after the holdings list (the side cards join the column in that order). */
 @media (max-width: 1000px) {
-  .overview { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'hero' 'aside' 'list'; }
-  .overview-aside { position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .overview { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; }
+  .overview > *, .overview-aside > * { grid-area: auto; }
+  .overview-aside { display: contents; }
+  .overview-hero { order: 1; }
+  .overview-aside > :first-child { order: 2; }
+  .overview-list { order: 3; }
+  .overview-aside > .distribution { order: 4; }
+  .distribution-body { flex-direction: row; align-items: center; }
+  .donut { flex: none; }
 }
 
 /* ── Phone layout ───────────────────────────────────────── */
@@ -435,7 +470,7 @@ input[type='date'], input[type='datetime-local'] { color-scheme: dark; }
 
   .main { padding-block: 16px calc(160px + env(safe-area-inset-bottom)); gap: 16px; }
   .overview { gap: 16px; }
-  .overview-aside { display: flex; gap: 16px; }
+  .distribution-body { flex-direction: column; }
   .card { padding: 18px 16px; border-radius: 18px; }
   .hero-card { background: none; border: 0; box-shadow: none; padding: 4px 2px 0; }
   .btn { min-height: 46px; }

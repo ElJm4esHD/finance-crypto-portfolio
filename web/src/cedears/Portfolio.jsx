@@ -4,6 +4,7 @@ import { PHONE_QUERY, useApi, useMediaQuery, useStoredState } from '../hooks.js'
 import { ChangeChip, EmptyState, ErrorMessage, Icon, Loading, PriceNotice, SignedChange } from '../components/ui.jsx';
 import { convert, CurrencySelect, MepNote } from '../components/money.jsx';
 import { AssetList } from '../components/AssetList.jsx';
+import { distribution, Distribution } from '../components/Distribution.jsx';
 import { GrowthPanel } from '../components/GrowthPanel.jsx';
 import { EditCash, EditPosition } from './EditPosition.jsx';
 
@@ -63,12 +64,19 @@ export function CedearPortfolio({ onNewOperation }) {
   const tickers = positions.map((p) => p.ticker);
   const inBoth = (t) => tickers.filter((x) => x === t).length > 1;
 
+  // By instrument: a ticker held in both currencies is one slice. Needs the
+  // dólar MEP to add up both currencies.
+  const byTicker = new Map();
+  for (const p of open) byTicker.set(p.ticker, (byTicker.get(p.ticker) ?? 0) + valueOf(p));
+  const pie = distribution(rate ? [...byTicker].map(([symbol, value]) => ({ symbol, value })) : []);
+
   const rows = (showClosed ? [...open, ...closed] : open).map((p) => {
     const isClosed = p.quantity === 0;
     const value = valueOf(p);
     const weight = rate ? (openValue > 0 && !isClosed ? (value / openValue) * 100 : 0) : p.weight;
     return {
       key: `${p.ticker}|${p.currency}`,
+      color: pie.colors.get(p.ticker),
       symbol: p.ticker,
       label: inBoth(p.ticker) ? `${p.ticker} · ${p.currency}` : p.ticker,
       sub: isClosed ? 'Cerrada' : `${fmtAmount(p.quantity)} · ${fmtMoney(value, shownIn(p.currency))}${p.value === null ? '*' : ''}`,
@@ -161,6 +169,7 @@ export function CedearPortfolio({ onNewOperation }) {
             <MepNote fx={data.fx} />
           </div>
         </section>
+        <Distribution title="Distribución por instrumento" note="Sobre las posiciones abiertas, sin el disponible." slices={pie.slices} currency={currency} />
       </aside>
 
       <section class="card overview-list">
