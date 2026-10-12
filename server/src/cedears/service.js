@@ -2,7 +2,7 @@ import { getSetting } from '../db.js';
 import { UserError, NotFoundError } from '../lib/errors.js';
 import { fmt } from '../lib/format.js';
 import { cents, clean, isNegative, isNegativeMoney } from '../lib/num.js';
-import { dayChangeSummary } from '../lib/day-change.js';
+import { dayChangeSummary, performanceSummary } from '../lib/day-change.js';
 import { oneOf, toDate, toNumber, toTicker } from '../lib/validate.js';
 import { createMarketPrices, marketKey } from '../prices/index.js';
 
@@ -16,6 +16,18 @@ export const openingCashKey = (currency) => `cedears_opening_cash_${currency}`;
 // A position is identified by ticker + currency. Buys recompute the weighted
 // average price; sells only lower the quantity. Closed positions stay at 0.
 // Cash is rounded to cents.
+// Net money put in per currency: opening balance + deposits − withdrawals.
+// Buys, sells and commissions only move money inside the portfolio.
+export function investedOf(cashMovements, openingCash = {}, untilDate = null) {
+  const invested = { USD: openingCash.USD ?? 0, ARS: openingCash.ARS ?? 0 };
+  for (const m of cashMovements) {
+    if (untilDate && m.date > untilDate) continue;
+    invested[m.currency] += m.type === 'deposit' ? m.amount : -m.amount;
+  }
+  for (const c of CURRENCIES) invested[c] = cents(invested[c]);
+  return invested;
+}
+
 export function computeState(operations, cashMovements, openingCash = {}) {
   const cash = { USD: openingCash.USD ?? 0, ARS: openingCash.ARS ?? 0 };
   const positions = new Map();
@@ -106,6 +118,7 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
     const movements = q.movements.all();
     const opening = openingCash();
     const { positions, cash } = computeState(q.operations.all(), movements, opening);
+    const invested = investedOf(movements, opening);
     const all = [...positions.values()];
     const { quotes, stale, error } = await fetchQuotes(all.filter((p) => p.quantity > 0));
 
@@ -141,6 +154,7 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
         cash: cash[c],
         total: clean(total),
         ...dayChangeSummary(total, withDay.length ? withDay.reduce((s, r) => s + r.dayChange, 0) : null),
+        ...performanceSummary(total, invested[c]),
         // Shown only for currencies the user actually uses.
         used: inCurrency.length > 0 || movements.some((m) => m.currency === c) || opening[c] !== 0,
       };
@@ -222,6 +236,11 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
 
     listCashMovements() {
       return q.movements.all();
+    },
+
+    // For the growth chart: opening balance and every deposit/withdrawal.
+    investedHistory() {
+      return { opening: openingCash(), movements: q.movements.all() };
     },
 
     createCashMovement(input) {

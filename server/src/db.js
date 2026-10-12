@@ -116,6 +116,40 @@ export const MIGRATIONS = [
     PRIMARY KEY (source, key)
   );
   `,
+  // v5: invested money vs. market performance.
+  // - crypto_flows: money put into (or taken out of) crypto, valued in USDT
+  //   when it happened. Exchanges between coins and balance corrections are
+  //   not flows.
+  // - fx_rates: dólar MEP of each day, to convert the history.
+  // - Crypto had no record of contributions: what was invested so far starts
+  //   as the value of the first snapshot (editable in the app).
+  (db) => {
+    db.exec(`
+      CREATE TABLE crypto_flows (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        executed_at TEXT NOT NULL,
+        asset       TEXT NOT NULL,
+        amount      REAL NOT NULL CHECK (amount <> 0),
+        value_usdt  REAL NOT NULL,
+        created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX idx_crypto_flows_executed_at ON crypto_flows (executed_at);
+
+      CREATE TABLE fx_rates (
+        date TEXT PRIMARY KEY,
+        rate REAL NOT NULL CHECK (rate > 0)
+      );
+      INSERT INTO fx_rates (date, rate)
+        SELECT substr(fetched_at, 1, 10), json_extract(data, '$.sell') FROM price_cache
+        WHERE source LIKE 'fx:%' AND source <> 'fx:mock' AND json_extract(data, '$.sell') > 0;
+    `);
+    const hasCrypto = db.prepare('SELECT EXISTS (SELECT 1 FROM crypto_holdings WHERE amount > 0) AS yes').get().yes;
+    const first = db.prepare("SELECT date, value FROM snapshots WHERE portfolio = 'crypto' ORDER BY date LIMIT 1").get();
+    if (hasCrypto && first) {
+      setSetting(db, 'crypto_invested_opening', first.value);
+      setSetting(db, 'crypto_invested_opening_date', first.date);
+    }
+  },
 ];
 
 export function openDb(file) {

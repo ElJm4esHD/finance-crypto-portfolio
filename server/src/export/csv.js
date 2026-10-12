@@ -39,6 +39,9 @@ export async function cryptoCsv(crypto) {
         ['exportado', localDateTime()],
         ['precios', sourceLabel(h.priceSource)],
         ['valor_total_usdt', money(h.total)],
+        ['invertido_usdt', money(h.invested)],
+        ['rendimiento_usdt', money(h.performance)],
+        ['rendimiento_pct', pct(h.performancePct)],
         ['variacion_dia_usdt', money(h.dayChange)],
         ['variacion_dia_pct', pct(h.dayChangePct)],
         ['objetivo_usdt', money(h.goal)],
@@ -49,6 +52,13 @@ export async function cryptoCsv(crypto) {
       title: 'Cartera',
       header: ['moneda', 'cantidad', 'precio_usdt', 'valor_usdt', 'peso_pct', 'variacion_dia_pct'],
       rows: h.holdings.map((x) => [x.asset, num(x.amount), num(x.price), money(x.value), pct(x.weight), pct(x.dayChangePct)]),
+    },
+    {
+      title: 'Aportes y retiros',
+      header: ['fecha', 'tipo', 'moneda', 'cantidad', 'valor_usdt'],
+      rows: crypto.listFlows().map((f) => [
+        f.executed_at.replace('T', ' '), f.amount > 0 ? 'aporte' : 'retiro', f.asset, num(Math.abs(f.amount)), money(Math.abs(f.value_usdt)),
+      ]),
     },
     {
       title: 'Historial de intercambios',
@@ -76,10 +86,13 @@ export async function cedearsCsv(cedears) {
     },
     {
       title: 'Totales por moneda',
-      header: ['moneda', 'posiciones', 'disponible', 'total', 'variacion_dia', 'variacion_dia_pct'],
+      header: ['moneda', 'posiciones', 'disponible', 'total', 'invertido', 'rendimiento', 'rendimiento_pct', 'variacion_dia', 'variacion_dia_pct'],
       rows: currencies.map((c) => {
         const t = p.totals[c];
-        return [c, money(t.positions), money(t.cash), money(t.total), money(t.dayChange), pct(t.dayChangePct)];
+        return [
+          c, money(t.positions), money(t.cash), money(t.total), money(t.invested), money(t.performance), pct(t.performancePct),
+          money(t.dayChange), pct(t.dayChangePct),
+        ];
       }),
     },
     {

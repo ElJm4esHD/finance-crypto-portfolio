@@ -2,27 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { MIGRATIONS, migrate, openDb } from '../src/db.js';
-import { aggregate, createSnapshotService } from '../src/snapshots/service.js';
+import { createSnapshotService } from '../src/snapshots/service.js';
 
 const silent = { warn() {} };
 
-test('aggregation keeps the last value of each period', () => {
-  const points = [
-    { date: '2026-01-30', value: 1 },
-    { date: '2026-01-31', value: 2 }, // Saturday, week 05
-    { date: '2026-02-01', value: 3 }, // Sunday, week 05
-    { date: '2026-02-02', value: 4 }, // Monday, week 06
-    { date: '2027-03-01', value: 5 },
-  ];
-  assert.deepEqual(aggregate(points, 'weekly').map((p) => p.value), [3, 4, 5]);
-  assert.deepEqual(aggregate(points, 'monthly').map((p) => p.value), [2, 4, 5]);
-  assert.deepEqual(aggregate(points, 'yearly').map((p) => p.value), [4, 5]);
-  assert.equal(aggregate(points, 'daily').length, 5);
-});
+const rows = (db, portfolio) =>
+  db.prepare('SELECT date, currency, value FROM snapshots WHERE portfolio = ? ORDER BY date, currency').all(portfolio);
 
 test('capturing twice on the same day overwrites the value', async () => {
   let value = 100;
-  const svc = createSnapshotService(openDb(':memory:'), {
+  const db = openDb(':memory:');
+  const svc = createSnapshotService(db, {
     crypto: { snapshotValues: async () => [{ value, currency: 'USDT' }] },
     cedears: { snapshotValues: async () => [] },
   }, silent);
@@ -30,38 +20,28 @@ test('capturing twice on the same day overwrites the value', async () => {
   value = 120;
   await svc.capture('crypto', '2026-09-01');
   await svc.capture('cedears', '2026-09-01'); // nothing to record
-  const [usdt] = svc.getGrowth('crypto').currencies;
-  assert.equal(usdt.currency, 'USDT');
-  assert.deepEqual(usdt.series.daily, [{ date: '2026-09-01', value: 120 }]);
-  assert.deepEqual(usdt.available, ['daily']);
-  assert.deepEqual(svc.getGrowth('cedears').currencies, []);
+  assert.deepEqual(rows(db, 'crypto'), [{ date: '2026-09-01', currency: 'USDT', value: 120 }]);
+  assert.deepEqual(rows(db, 'cedears'), []);
+  assert.equal(svc.has('crypto', '2026-09-01'), true);
+  assert.equal(svc.has('cedears', '2026-09-01'), false);
 });
 
-test('each currency gets its own series', async () => {
-  const svc = createSnapshotService(openDb(':memory:'), {
+test('each currency gets its own row', async () => {
+  const db = openDb(':memory:');
+  const svc = createSnapshotService(db, {
     cedears: { snapshotValues: async () => [{ value: 10, currency: 'USD' }, { value: 5000, currency: 'ARS' }] },
   }, silent);
   await svc.capture('cedears', '2026-09-01');
-  await svc.capture('cedears', '2026-09-02');
-  const byCurrency = Object.fromEntries(svc.getGrowth('cedears').currencies.map((c) => [c.currency, c]));
-  assert.deepEqual(Object.keys(byCurrency).sort(), ['ARS', 'USD']);
-  assert.deepEqual(byCurrency.ARS.series.daily.map((p) => p.value), [5000, 5000]);
-});
-
-test('longer views become available as history accumulates', async () => {
-  const svc = createSnapshotService(openDb(':memory:'), {
-    crypto: { snapshotValues: async () => [{ value: 1, currency: 'USDT' }] },
-  }, silent);
-  for (const d of ['2025-12-30', '2026-01-02', '2026-01-10']) await svc.capture('crypto', d);
-  assert.deepEqual(svc.getGrowth('crypto').currencies[0].available, ['daily', 'weekly', 'monthly', 'yearly']);
+  assert.deepEqual(rows(db, 'cedears').map((r) => r.currency), ['ARS', 'USD']);
 });
 
 test('a failing price source skips the snapshot instead of crashing', async () => {
-  const svc = createSnapshotService(openDb(':memory:'), {
+  const db = openDb(':memory:');
+  const svc = createSnapshotService(db, {
     crypto: { snapshotValues: async () => { throw new Error('offline'); } },
   }, silent);
   assert.deepEqual(await svc.capture('crypto', '2026-09-01'), []);
-  assert.deepEqual(svc.getGrowth('crypto').currencies, []);
+  assert.deepEqual(rows(db, 'crypto'), []);
 });
 
 test('migration v2 keeps crypto snapshots and drops the old USD-consolidated CEDEAR ones', () => {
@@ -101,4 +81,22 @@ test('migration v3 clears cash movements and sets the available cash, keeping op
 test('migration v3 leaves an empty database alone', () => {
   const db = openDb(':memory:');
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'cedears_opening_cash_%'").get().n, 0);
+});
+
+test('migration v5 starts the crypto invested amount at the first snapshot', () => {
+  const db = new Database(':memory:');
+  for (const m of MIGRATIONS.slice(0, 4)) {
+    if (typeof m === 'function') m(db);
+    else db.exec(m);
+  }
+  db.pragma('user_version = 4');
+  db.exec(`
+    INSERT INTO crypto_holdings (asset, amount) VALUES ('BTC', 0.1);
+    INSERT INTO snapshots VALUES ('crypto', '2026-09-20', 'USDT', 9000), ('crypto', '2026-09-10', 'USDT', 8000);
+    INSERT INTO price_cache VALUES ('fx:dolarapi', 'MEP', '{"buy":1400,"sell":1420}', '2026-09-23T13:30:00.000Z');`);
+  migrate(db);
+  const setting = (k) => db.prepare('SELECT value FROM settings WHERE key = ?').get(k)?.value;
+  assert.equal(setting('crypto_invested_opening'), '8000');
+  assert.equal(setting('crypto_invested_opening_date'), '2026-09-10');
+  assert.deepEqual(db.prepare('SELECT * FROM fx_rates').all(), [{ date: '2026-09-23', rate: 1420 }]);
 });

@@ -2,11 +2,14 @@ import { getSetting, setSetting } from '../db.js';
 import { UserError, NotFoundError } from '../lib/errors.js';
 import { fmt } from '../lib/format.js';
 import { clean, isNegative, EPSILON } from '../lib/num.js';
-import { dayChangeSummary } from '../lib/day-change.js';
+import { dayChangeSummary, performanceSummary } from '../lib/day-change.js';
 import { toDateTime, toNumber, toTicker } from '../lib/validate.js';
 import { createCryptoPrices } from '../prices/index.js';
 
 const GOAL_KEY = 'crypto_goal_usdt';
+// Invested before contributions were recorded (set by migration v5 or by hand).
+const OPENING_KEY = 'crypto_invested_opening';
+const OPENING_DATE_KEY = 'crypto_invested_opening_date';
 
 export function createCryptoService(db, priceProvider, { log } = {}) {
   const prices = createCryptoPrices({ db, provider: priceProvider, log });
@@ -25,6 +28,13 @@ export function createCryptoService(db, priceProvider, { log } = {}) {
       INSERT INTO crypto_exchanges (executed_at, from_asset, from_amount, to_asset, to_amount, fee_asset, fee_amount)
       VALUES (@executed_at, @from_asset, @from_amount, @to_asset, @to_amount, @fee_asset, @fee_amount)`),
     deleteExchange: db.prepare('DELETE FROM crypto_exchanges WHERE id = ?'),
+    flows: db.prepare('SELECT * FROM crypto_flows ORDER BY executed_at DESC, id DESC'),
+    flow: db.prepare('SELECT * FROM crypto_flows WHERE id = ?'),
+    flowsTotal: db.prepare('SELECT COALESCE(SUM(value_usdt), 0) AS total FROM crypto_flows'),
+    insertFlow: db.prepare(`
+      INSERT INTO crypto_flows (executed_at, asset, amount, value_usdt)
+      VALUES (@executed_at, @asset, @amount, @value_usdt)`),
+    deleteFlow: db.prepare('DELETE FROM crypto_flows WHERE id = ?'),
   };
 
   // Balance changes an exchange causes, grouped by asset.
@@ -48,6 +58,14 @@ export function createCryptoService(db, priceProvider, { log } = {}) {
     }
     for (const [asset, amount] of updates) q.upsertHolding.run(asset, amount);
   }
+
+  function getOpening() {
+    const raw = getSetting(db, OPENING_KEY);
+    return { amount: raw === null ? 0 : Number(raw), date: getSetting(db, OPENING_DATE_KEY) };
+  }
+
+  // Net money put into crypto, in USDT.
+  const getInvested = () => clean(getOpening().amount + q.flowsTotal.get().total);
 
   function getGoal() {
     const raw = getSetting(db, GOAL_KEY);
@@ -83,9 +101,67 @@ export function createCryptoService(db, priceProvider, { log } = {}) {
         holdings,
         total: clean(total),
         ...dayChangeSummary(total, dayChange),
+        ...performanceSummary(total, getInvested()),
         goal: getGoal(),
         priceSource: { name: prices.name, mock: prices.mock, stale, error },
       };
+    },
+
+    // ── Contributions (money in / out) ──────────────────────
+    // A deposit adds coins bought with new money; a withdrawal takes coins
+    // out to spend them. Each one is valued in USDT at that moment (market
+    // price, or the value the user paid/received), which is what counts as
+    // invested. Exchanges and balance corrections are not contributions.
+    listFlows() {
+      return q.flows.all();
+    },
+
+    async createFlow(input) {
+      const type = input.type === 'withdrawal' ? 'withdrawal' : input.type === 'deposit' ? 'deposit' : null;
+      if (!type) throw new UserError('El tipo de movimiento no es válido.');
+      const asset = toTicker(input.asset, 'la moneda');
+      const amount = toNumber(input.amount, 'La cantidad');
+      const executedAt = toDateTime(input.executedAt);
+      const given = input.valueUsdt == null || String(input.valueUsdt).trim() === '' ? null : toNumber(input.valueUsdt, 'El valor en USDT');
+      let value = given;
+      if (value === null) {
+        const { quotes } = await fetchQuotes([asset]);
+        const price = asset === 'USDT' ? 1 : quotes[asset]?.price;
+        if (!price) throw new UserError(`No hay precio de ${asset} para valuarlo: ingresá cuánto vale en USDT.`);
+        value = clean(amount * price);
+      }
+      const sign = type === 'deposit' ? 1 : -1;
+      return db.transaction(() => {
+        applyDeltas(
+          new Map([[asset, sign * amount]]),
+          (a, have, need) => `No podés retirar ${fmt(need)} ${a}: tenés ${fmt(have)}.`,
+        );
+        const { lastInsertRowid } = q.insertFlow.run({ executed_at: executedAt, asset, amount: sign * amount, value_usdt: sign * value });
+        return q.flow.get(lastInsertRowid);
+      })();
+    },
+
+    // Deleting a contribution also reverts its effect on the balance.
+    deleteFlow(id) {
+      db.transaction(() => {
+        const flow = q.flow.get(id);
+        if (!flow) throw new NotFoundError('Ese movimiento no existe.');
+        applyDeltas(
+          new Map([[flow.asset, -flow.amount]]),
+          (a, have, need) => `No se puede borrar: revertirlo necesita ${fmt(need)} ${a} y hoy tenés ${fmt(have)}.`,
+        );
+        q.deleteFlow.run(id);
+      })();
+    },
+
+    getInvested,
+
+    // What was invested before contributions were recorded (USDT).
+    getOpening,
+    setOpening(amountInput) {
+      const amount = toNumber(amountInput, 'El monto invertido', { allowMin: true });
+      setSetting(db, OPENING_KEY, amount);
+      return getOpening();
     },
 
     // Price of the last 24 h, for the chart of one coin.

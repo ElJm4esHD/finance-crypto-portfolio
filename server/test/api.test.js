@@ -43,7 +43,8 @@ test('crypto flow over HTTP', async (t) => {
 
   const growth = (await app.inject('/api/crypto/growth')).json();
   assert.equal(growth.goal, 5000);
-  assert.ok(Array.isArray(growth.currencies));
+  assert.equal(growth.currency, 'USD');
+  assert.ok(Array.isArray(growth.points) && Array.isArray(growth.flows));
 
   const csv = await app.inject('/api/crypto/export.csv');
   assert.equal(csv.statusCode, 200);
@@ -89,7 +90,7 @@ test('cedears flow over HTTP', async (t) => {
   assert.equal(portfolio.totals.USD.used, false);
 
   const csv = (await app.inject('/api/cedears/export.csv')).body;
-  assert.match(csv, /\r\nTotales por moneda\r\nmoneda,posiciones,disponible,total,variacion_dia,variacion_dia_pct\r\nARS,/);
+  assert.match(csv, /\r\nTotales por moneda\r\nmoneda,posiciones,disponible,total,invertido,rendimiento,rendimiento_pct,variacion_dia,variacion_dia_pct\r\nARS,/);
   assert.doesNotMatch(csv, /\r\nUSD,/);
   assert.match(csv, /\r\n2026-09-20,compra,AAPL\.BA,10,15000,ARS,100,150100\r\n/);
   assert.match(csv, /\r\n2026-09-19,depósito,ARS,200000,\r\n/);
@@ -142,4 +143,18 @@ test('intraday charts and the dólar MEP over HTTP', async (t) => {
   const spy = await app.inject('/api/cedears/chart/SPY');
   assert.equal(spy.statusCode, 200);
   assert.ok(spy.json().session.end > spy.json().session.start);
+});
+
+test('crypto contributions over HTTP', async (t) => {
+  const app = setup();
+  t.after(() => app.close());
+  let res = await app.inject({ method: 'POST', url: '/api/crypto/flows', payload: { type: 'deposit', asset: 'usdt', amount: 250, executedAt: '2026-10-01T09:00' } });
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.json().value_usdt, 250);
+  res = await app.inject({ method: 'PUT', url: '/api/crypto/invested-opening', payload: { amount: 1000 } });
+  assert.equal(res.json().amount, 1000);
+  const h = (await app.inject('/api/crypto/holdings')).json();
+  assert.deepEqual([h.total, h.invested, h.performance], [250, 1250, -1000]);
+  assert.equal((await app.inject('/api/crypto/flows')).json().length, 1);
+  assert.equal((await app.inject('/api/cedears/growth?currency=USD')).json().currency, 'USD');
 });

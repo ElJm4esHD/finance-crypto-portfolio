@@ -37,10 +37,19 @@ crypto.createExchange({ executedAt: '2026-08-02T11:20', fromAsset: 'USDT', fromA
 crypto.createExchange({ executedAt: '2026-08-19T18:05', fromAsset: 'ETH', fromAmount: 0.2, toAsset: 'BTC', toAmount: 0.0071 });
 crypto.createExchange({ executedAt: '2026-09-10T09:40', fromAsset: 'USDT', fromAmount: 600, toAsset: 'BNB', toAmount: 0.97, feeAsset: 'BNB', feeAmount: 0.00073 });
 crypto.setGoal(15000);
+// Money put in later (counts as invested, flagged on the growth chart).
+const daysAgo = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return localDate(d);
+};
+await crypto.createFlow({ type: 'deposit', asset: 'USDT', amount: 1500, executedAt: `${daysAgo(200)}T10:00` });
+await crypto.createFlow({ type: 'deposit', asset: 'BTC', amount: 0.01, executedAt: `${daysAgo(45)}T18:30` });
 
 // ── CEDEARs / ETF ────────────────────────────────────────
 cedears.createCashMovement({ type: 'deposit', currency: 'ARS', amount: 3500000, date: '2026-06-01', note: 'Transferencia inicial' });
 cedears.createCashMovement({ type: 'deposit', currency: 'USD', amount: 4000, date: '2026-06-01' });
+cedears.createCashMovement({ type: 'deposit', currency: 'ARS', amount: 800000, date: daysAgo(30), note: 'Aguinaldo' });
 const ops = [
   ['buy', 'AAPL.BA', 40, 18500, 'ARS', 1100, '2026-06-03'],
   ['buy', 'MELI.BA', 20, 21000, 'ARS', 630, '2026-06-10'],
@@ -55,23 +64,31 @@ for (const [type, ticker, quantity, price, currency, commission, date] of ops) {
 }
 
 // ── Snapshots: a random walk that ends at today's real value ──
-function backfill(portfolio, endValue, days, currency, drift) {
+// Walking back, the money put in on a day is taken out, so deposits show up
+// as jumps. Returns the first value.
+function backfill(portfolio, endValue, days, currency, drift, flows = []) {
   const insert = db.prepare('INSERT OR REPLACE INTO snapshots (portfolio, date, value, currency) VALUES (?, ?, ?, ?)');
   let seed = 42;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const values = [endValue];
-  for (let i = 1; i < days; i++) values.push(values[i - 1] / (1 + drift + (rand() - 0.5) * 0.04));
-  values.reverse();
-  const today = new Date();
-  values.forEach((v, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - (days - 1 - i));
-    insert.run(portfolio, localDate(d), Math.round(v * 100) / 100, currency);
-  });
+  const dates = Array.from({ length: days }, (_, i) => daysAgo(days - 1 - i));
+  const flowOn = new Map();
+  for (const f of flows) flowOn.set(f.date, (flowOn.get(f.date) ?? 0) + f.amount);
+  const values = Array(days);
+  values[days - 1] = endValue;
+  for (let i = days - 1; i > 0; i--) values[i - 1] = (values[i] - (flowOn.get(dates[i]) ?? 0)) / (1 + drift + (rand() - 0.5) * 0.04);
+  values.forEach((v, i) => insert.run(portfolio, dates[i], Math.round(v * 100) / 100, currency));
+  return values[0];
 }
 
-for (const { value, currency } of await crypto.snapshotValues()) backfill('crypto', value, 430, currency, 0.0012);
-for (const { value, currency } of await cedears.snapshotValues()) backfill('cedears', value, 115, currency, 0.0008);
+const cryptoFlows = crypto.listFlows().map((f) => ({ date: f.executed_at.slice(0, 10), amount: f.value_usdt }));
+for (const { value, currency } of await crypto.snapshotValues()) {
+  crypto.setOpening(Math.round(backfill('crypto', value, 430, currency, 0.0012, cryptoFlows) * 100) / 100);
+}
+const movements = cedears.listCashMovements();
+for (const { value, currency } of await cedears.snapshotValues()) {
+  const flows = movements.filter((m) => m.currency === currency).map((m) => ({ date: m.date, amount: m.amount }));
+  backfill('cedears', value, 115, currency, 0.0008, flows);
+}
 await snapshots.captureAll();
 
 console.log(`Datos de demo cargados en ${file}`);

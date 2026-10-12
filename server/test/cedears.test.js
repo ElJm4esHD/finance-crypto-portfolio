@@ -94,10 +94,12 @@ test('totals stay in their own currency and weights are per currency', async () 
   assert.equal(byTicker.SPY.pnlPct, 10);
   assert.equal(byTicker.SPY.dayChangePct, 10);
   assert.deepEqual(p.totals.USD, {
-    positions: 2200, cash: 1000, total: 3200, dayChange: 200, dayChangePct: 6.66666666666667, used: true,
+    positions: 2200, cash: 1000, total: 3200, dayChange: 200, dayChangePct: 6.66666666666667,
+    invested: 3000, performance: 200, performancePct: 6.66666666666667, used: true,
   });
   assert.deepEqual(p.totals.ARS, {
-    positions: 1210000, cash: 900000, total: 2110000, dayChange: 110000, dayChangePct: 5.5, used: true,
+    positions: 1210000, cash: 900000, total: 2110000, dayChange: 110000, dayChangePct: 5.5,
+    invested: 2000000, performance: 110000, performancePct: 5.5, used: true,
   });
 });
 
@@ -167,4 +169,17 @@ test('buys that would leave cash negative by a cent are rejected', () => {
   svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 100, date: '2026-09-01' });
   assert.throws(() => buy(svc, 'SPY', 1, 100.01), /Fondos insuficientes/);
   assert.throws(() => buy(svc, 'SPY', 1, 100, { commission: 0.01 }), /Fondos insuficientes/);
+});
+
+test('a deposit adds to invested, not to performance', async () => {
+  const svc = setup();
+  svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 1000, date: '2026-09-01' });
+  buy(svc, 'SPY', 1, 1000); // worth 1100 → +100 performance
+  let { totals } = await svc.getPortfolio();
+  assert.deepEqual([totals.USD.invested, totals.USD.performance, totals.USD.performancePct], [1000, 100, 10]);
+  svc.createCashMovement({ type: 'deposit', currency: 'USD', amount: 5000, date: '2026-09-03' });
+  svc.createCashMovement({ type: 'withdrawal', currency: 'USD', amount: 500, date: '2026-09-04' });
+  ({ totals } = await svc.getPortfolio());
+  assert.equal(totals.USD.total, 5600);
+  assert.deepEqual([totals.USD.invested, totals.USD.performance], [5500, 100]);
 });

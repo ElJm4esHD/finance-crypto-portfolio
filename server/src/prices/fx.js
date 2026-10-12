@@ -1,7 +1,10 @@
 // Dólar MEP used for every ARS ↔ USD conversion in the app. It is fetched
 // once a day by the scheduler (see index.js), never on demand: every screen
 // reads the stored value. If the fetch fails the last value keeps being used
-// and flagged as outdated.
+// and flagged as outdated. Each day's rate is also kept (fx_rates) to convert
+// the history of the portfolios.
+import { localDate } from '../lib/dates.js';
+
 const KEY = 'MEP';
 
 export function createFxService({ db, provider, log = console }) {
@@ -11,6 +14,8 @@ export function createFxService({ db, provider, log = console }) {
     upsert: db.prepare(`
       INSERT INTO price_cache (source, key, data, fetched_at) VALUES (?, ?, ?, ?)
       ON CONFLICT (source, key) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`),
+    saveDay: db.prepare('INSERT INTO fx_rates (date, rate) VALUES (?, ?) ON CONFLICT (date) DO UPDATE SET rate = excluded.rate'),
+    history: db.prepare('SELECT date, rate FROM fx_rates ORDER BY date'),
   };
   let failure = null;
 
@@ -42,6 +47,7 @@ export function createFxService({ db, provider, log = console }) {
       try {
         const mep = await provider.getMep();
         q.upsert.run(source, KEY, JSON.stringify(mep), new Date().toISOString());
+        if (!provider.mock) q.saveDay.run(localDate(), mep.sell);
         failure = null;
         log.info?.(`[dólar] MEP ${mep.sell} (${provider.name})`);
         return true;
@@ -51,6 +57,9 @@ export function createFxService({ db, provider, log = console }) {
         return false;
       }
     },
+
+    // [{ date, rate }] oldest first: the MEP of every day it was fetched.
+    history: () => q.history.all(),
 
     // True when the stored value is older than `since` (Date) or missing.
     isOlderThan(since) {

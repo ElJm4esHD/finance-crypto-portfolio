@@ -4,9 +4,13 @@ import fastifyStatic from '@fastify/static';
 import { createCryptoService } from './crypto/service.js';
 import { createCedearService } from './cedears/service.js';
 import { createSnapshotService } from './snapshots/service.js';
+import { createGrowthService } from './growth/service.js';
 import { NotFoundError, UserError } from './lib/errors.js';
 import { localDate } from './lib/dates.js';
 import { cryptoCsv, cedearsCsv } from './export/csv.js';
+
+// ?currency=ARS|USD for the growth charts.
+const growthCurrency = (raw, fallback) => (raw === 'ARS' || raw === 'USD' ? raw : fallback);
 
 function parseId(raw) {
   const id = Number(raw);
@@ -14,7 +18,7 @@ function parseId(raw) {
   return id;
 }
 
-const NO_FX = { get: () => null };
+const NO_FX = { get: () => null, history: () => [] };
 
 // fx: dólar MEP service (prices/fx.js); its value travels with every portfolio
 // so the UI can convert ARS ↔ USD.
@@ -23,6 +27,7 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
   const crypto = createCryptoService(db, cryptoPrices, { log: app.log });
   const cedears = createCedearService(db, marketPrices, { fx, log: app.log });
   const snapshots = createSnapshotService(db, { crypto, cedears }, app.log);
+  const growth = createGrowthService(db, { crypto, cedears, fx });
 
   // Keep today's snapshot in sync after every change (errors are logged inside).
   const refresh = (portfolio) => void snapshots.capture(portfolio);
@@ -75,9 +80,30 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
     return reply.code(204).send();
   });
 
+  app.get('/api/crypto/flows', async () => crypto.listFlows());
+
+  app.post('/api/crypto/flows', async (req, reply) => {
+    const flow = await crypto.createFlow(req.body ?? {});
+    refresh('crypto');
+    return reply.code(201).send(flow);
+  });
+
+  app.delete('/api/crypto/flows/:id', async (req, reply) => {
+    crypto.deleteFlow(parseId(req.params.id));
+    refresh('crypto');
+    return reply.code(204).send();
+  });
+
+  app.get('/api/crypto/invested-opening', async () => crypto.getOpening());
+
+  app.put('/api/crypto/invested-opening', async (req) => crypto.setOpening(req.body?.amount));
+
   app.put('/api/crypto/goal', async (req) => ({ goal: crypto.setGoal(req.body?.amount ?? null) }));
 
-  app.get('/api/crypto/growth', async () => ({ ...snapshots.getGrowth('crypto'), goal: crypto.getGoal() }));
+  app.get('/api/crypto/growth', async (req) => ({
+    ...growth.get('crypto', growthCurrency(req.query.currency, 'USD')),
+    goal: crypto.getGoal(),
+  }));
 
   app.get('/api/crypto/export.csv', async (req, reply) => sendCsv(reply, 'cripto', await cryptoCsv(crypto)));
 
@@ -114,7 +140,7 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
     return reply.code(204).send();
   });
 
-  app.get('/api/cedears/growth', async () => snapshots.getGrowth('cedears'));
+  app.get('/api/cedears/growth', async (req) => growth.get('cedears', growthCurrency(req.query.currency, 'ARS')));
 
   app.get('/api/cedears/export.csv', async (req, reply) => sendCsv(reply, 'cedears', await cedearsCsv(cedears)));
 
