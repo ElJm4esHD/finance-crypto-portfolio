@@ -2,10 +2,10 @@
 
 App personal para seguir dos carteras independientes, pensada para correr en un servidor casero dentro de la LAN:
 
-- **Cripto**: saldos por moneda, historial de intercambios (lo que entregás → lo que recibís, con comisión opcional), un objetivo en USDT y el gráfico de crecimiento.
-- **CEDEARs / ETF**: compras y ventas con precio promedio ponderado, dinero disponible en USD y ARS, peso de cada posición, historial y gráfico de crecimiento.
+- **Cripto**: saldos por moneda, intercambios (lo que entregás → lo que recibís, con comisión opcional), aportes y retiros, un objetivo en USDT y el gráfico de crecimiento.
+- **CEDEARs / ETF**: compras y ventas con precio promedio ponderado, depósitos y retiros, dinero disponible en USD y ARS, peso de cada posición, historial y gráfico de crecimiento.
 
-Las dos secciones tienen las mismas pestañas (**Cartera**, **Historial**, **Crecimiento**), un selector para ver los montos en **ARS, USD o ambos** (convertidos con el **dólar MEP** del día), muestran la variación del día, un **gráfico intradía** al tocar cada moneda o ticker, y se pueden **exportar a CSV**. La app se puede **instalar en el celular**.
+Diseño oscuro estilo app de inversiones. En **Cartera** cada sección muestra el total con la variación del día, un selector **ARS / USD** (conversión con el **dólar MEP** del día), el **gráfico de crecimiento**, un resumen con **invertido**, **rendimiento** y **disponible**, y la lista de activos con su tendencia del día; tocando un activo se ve su detalle y el **gráfico intradía**. Además está la pestaña **Historial**, y en el celular el gráfico tiene su propia pestaña **Crecimiento**. Todo se puede **exportar a CSV** y la app se puede **instalar en el celular**.
 
 Precios en vivo: **Binance** (cripto), **Yahoo Finance** (CEDEARs/ETF) y **DolarAPI** (dólar MEP). Ver [Precios y dólar MEP](#precios-y-dólar-mep).
 
@@ -60,8 +60,15 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 
 ## Cómo funciona
 
+### Invertido y rendimiento
+- **Invertido** = plata neta que pusiste (aportes/depósitos − retiros). **Rendimiento** = valor actual − invertido: lo que hizo el mercado (y las comisiones), nunca un depósito.
+- CEDEARs/ETF: depósitos y retiros se cargan en **Nueva operación → Depósito / Retiro**.
+- Cripto: **Nuevo movimiento → Aporte / Retiro** suma o resta monedas y las valúa en USDT en ese momento (precio de mercado, o lo que pagaste si lo indicás). Los intercambios y las correcciones de saldo no son aportes.
+- Cripto no registraba aportes antes de esta función: lo invertido arranca en el valor del primer snapshot guardado (**invertido inicial**). Si sabés el número real, corregilo con el lápiz junto a "Invertido".
+- El gráfico de crecimiento muestra el invertido como línea punteada y marca cada aporte o retiro, así un salto por un depósito no parece ganancia. Cada día se convierte con el dólar MEP de ese día (`fx_rates`; los días anteriores al primer MEP guardado usan el primero).
+
 ### Cripto
-- Los **saldos** se cargan a mano al empezar y se pueden corregir cuando quieras (lápiz en cada moneda).
+- Los **saldos** se cargan a mano al empezar y se pueden corregir cuando quieras (Cartera → tocar la moneda → Corregir saldo).
 - Cada **intercambio** resta lo que entregás, suma lo que recibís y descuenta la comisión en la moneda que indiques. No se calcula ningún tipo de cambio: se guarda lo que declarás.
 - Si un intercambio dejaría un saldo en negativo, se rechaza con un mensaje claro (suele significar que falta corregir un saldo).
 - **Borrar** un intercambio revierte su efecto sobre los saldos.
@@ -74,8 +81,8 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 - Posiciones y dinero disponible se **recalculan desde el historial**, así que borrar una operación o un depósito deja todo consistente (si el borrado dejaría algo en negativo, se rechaza).
 - El dinero disponible se lleva **en centavos**: gastar exactamente lo que hay deja 0 (nunca "-0,00") y cualquier compra, venta o retiro que lo dejaría por debajo de 0 se rechaza.
 - Además del historial puede haber un **saldo inicial** por moneda (setting `cedears_opening_cash_<moneda>`): se usó una sola vez para reemplazar los depósitos y retiros de prueba por el disponible real (migración v3).
-- Las posiciones se agrupan por moneda y el **peso %** es dentro de su moneda. Sin precio de mercado, una posición se valúa a su costo.
-- El **total de la cartera** suma las dos monedas convertidas con el dólar MEP a la moneda elegida (ARS, USD o ambos). Si todavía no hay cotización, cada moneda se muestra por separado.
+- Sin precio de mercado, una posición se valúa a su costo.
+- El **total de la cartera**, lo invertido y el rendimiento suman las dos monedas convertidas con el dólar MEP a la moneda elegida (ARS o USD); el **peso %** es sobre ese total. El **disponible** se muestra siempre como la plata real en cada moneda, sin convertir. Si todavía no hay cotización, cada moneda se muestra por separado.
 
 ### Variación del día
 - En **Cartera** se ve cuánto subió o bajó cada posición y la cartera completa desde el cierre anterior (en cripto, respecto de hace 24 h).
@@ -83,8 +90,8 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 ### Crecimiento (snapshots diarios)
 - Una vez por día se guarda el valor de cada cartera: **cripto a las 23:59** (en USDT) y **CEDEARs/ETF a las 17:30 de lunes a viernes** (cierre del mercado argentino a las 17:00 más la demora de las cotizaciones). Además, cada cambio actualiza el valor del día en el momento.
 - Si el servidor estaba apagado a esa hora, al arrancar guarda el del día. Con precios desactualizados (API caída) no se guarda nada.
-- CEDEARs/ETF guarda una serie por moneda (ARS y USD, cada una con posiciones + disponible) y el gráfico tiene un selector de moneda.
-- El gráfico muestra vista **Diaria** (últimos 90 días) y agrega **Semanal**, **Mensual** y **Anual** a medida que hay al menos dos períodos de historial.
+- CEDEARs/ETF guarda una serie por moneda (ARS y USD, cada una con posiciones + disponible); el gráfico las suma en la moneda elegida.
+- Períodos **1M**, **3M**, **6M**, **1A** y **Todo** (aparecen a medida que hay historial). Arriba del gráfico: rendimiento del período (sin contar aportes), aportes netos e invertido.
 
 ## Precios y dólar MEP
 
@@ -99,7 +106,7 @@ Todo el acceso a precios pasa por **`server/src/prices/`**; el resto de la app n
 - **Yahoo Finance no tiene API oficial**: el endpoint puede cambiar o dejar de andar sin aviso. Está aislado en `server/src/prices/yahoo.js`; para reemplazarlo se escribe otro proveedor con el mismo contrato, se registra en `MARKET_PROVIDERS` y se elige con `MARKET_PRICE_PROVIDER`.
 - Si una posición tiene precio en otra moneda (ej. `SPY` cargado en pesos), se convierte con el MEP.
 - **Si una API falla** (timeout, error, límite de pedidos) la app sigue andando: muestra el último valor guardado con la etiqueta "Precio desactualizado desde …" y reintenta al minuto. Cada fuente falla por separado. Los últimos precios se guardan en la base (`price_cache`), así que también sobreviven a un reinicio.
-- **Gráfico intradía**: tocando una moneda se ven las últimas 24 h (velas de 5 minutos de Binance); tocando un ticker, la sesión del día (o la última, con el mercado cerrado).
+- **Gráfico intradía**: tocando una moneda se ven las últimas 24 h (velas de 5 minutos de Binance); tocando un ticker, la sesión del día (o la última, con el mercado cerrado). La misma serie, resumida, es la tendencia de cada fila de la lista.
 
 ## Exportar a CSV
 
@@ -148,22 +155,26 @@ El script de demo se niega a correr sobre una base que ya tiene datos.
 
 | Método | Ruta | |
 |---|---|---|
-| GET | `/api/crypto/holdings` | Saldos valuados, total y objetivo |
+| GET | `/api/crypto/holdings` | Saldos valuados, total, invertido, rendimiento, objetivo y MEP |
 | PUT | `/api/crypto/holdings` | `{ asset, amount }` — crear/corregir saldo |
 | DELETE | `/api/crypto/holdings/:asset` | Quitar una moneda |
 | GET/POST | `/api/crypto/exchanges` | Listar / registrar intercambio |
 | DELETE | `/api/crypto/exchanges/:id` | Borrar (revierte saldos) |
+| GET/POST | `/api/crypto/flows` | Listar / registrar aporte o retiro (`{ type, asset, amount, valueUsdt?, executedAt }`) |
+| DELETE | `/api/crypto/flows/:id` | Borrar (revierte el saldo) |
+| GET/PUT | `/api/crypto/invested-opening` | Invertido inicial en USDT |
 | PUT | `/api/crypto/goal` | `{ amount }` (null para quitarlo) |
-| GET | `/api/crypto/growth` | Series para el gráfico |
+| GET | `/api/crypto/growth?currency=USD\|ARS` | Valor e invertido por día + aportes |
 | GET | `/api/crypto/export.csv` | Cartera + historial en CSV |
-| GET | `/api/cedears/portfolio` | Posiciones, disponible y totales |
+| GET | `/api/cedears/portfolio` | Posiciones, disponible y totales (con invertido y rendimiento) y MEP |
 | GET/POST | `/api/cedears/operations` | Listar / registrar compra o venta |
 | DELETE | `/api/cedears/operations/:id` | Borrar operación |
 | GET/POST | `/api/cedears/cash-movements` | Listar / registrar depósito o retiro |
 | DELETE | `/api/cedears/cash-movements/:id` | Borrar movimiento |
-| GET | `/api/cedears/growth` | Series para el gráfico (una por moneda) |
+| GET | `/api/cedears/growth?currency=ARS\|USD` | Valor e invertido por día (ambas monedas sumadas) + depósitos |
 | GET | `/api/cedears/export.csv` | Totales, cartera e historiales en CSV |
 | GET | `/api/crypto/chart/:asset` | Precio de las últimas 24 h |
 | GET | `/api/cedears/chart/:ticker` | Precio de la sesión del día |
+| GET | `/api/crypto/sparklines`, `/api/cedears/sparklines` | Tendencia del día de cada activo |
 | GET | `/api/fx/mep` | Dólar MEP guardado |
 | GET | `/api/health` | Healthcheck |
