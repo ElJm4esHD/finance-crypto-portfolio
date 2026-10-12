@@ -163,6 +163,7 @@ const ICONS = {
   caretUp: 'M12 6l7 11H5z',
   caretDown: 'M12 18L5 7h14z',
   logo: 'M5 16l5-5 3.5 3.5L19 8',
+  calendar: 'M5 6h14v14H5zM5 10h14M9 3v4M15 3v4',
 };
 
 // `filled` for solid shapes (carets).

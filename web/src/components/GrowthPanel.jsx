@@ -1,27 +1,27 @@
 import { useState } from 'preact/hooks';
 import { fmtChartDate, fmtDate, fmtLongDate, fmtMoney, fmtSignedMoney } from '../format.js';
 import { useApi } from '../hooks.js';
-import { ErrorMessage, Loading, SignedChange } from './ui.jsx';
+import { ErrorMessage, Icon, Loading, SignedChange } from './ui.jsx';
 import { LineChart } from './LineChart.jsx';
 
-const RANGES = [
-  { id: '1M', days: 30 },
-  { id: '3M', days: 91 },
-  { id: '6M', days: 182 },
-  { id: '1A', days: 365 },
-  { id: 'Todo', days: null },
-];
 const DAY = 86400_000;
 const toTime = (iso) => Date.parse(`${iso}T00:00:00Z`);
 const toIso = (t) => new Date(t).toISOString().slice(0, 10);
 
-// Ranges worth offering: the shortest one, plus each longer one once the
-// history goes beyond the previous range.
-function availableRanges(points) {
-  if (points.length < 2) return [RANGES[0]];
-  const span = (toTime(points.at(-1).date) - toTime(points[0].date)) / DAY;
-  return RANGES.filter((r, i) => i === 0 || span > RANGES[i - 1].days);
-}
+// Time ranges, like trading apps. `since(last)` gives the first date shown,
+// counted back from the last snapshot; null = the whole history. With little
+// history a long range simply shows what there is.
+const back = (days) => (last) => toIso(toTime(last) - days * DAY);
+const RANGES = [
+  { id: '1D', label: '1 día', since: back(1) },
+  { id: '5D', label: '5 días', since: back(5) },
+  { id: '1M', label: '1 mes', since: back(30) },
+  { id: '6M', label: '6 meses', since: back(182) },
+  { id: 'YTD', label: 'en el año', since: (last) => `${last.slice(0, 4)}-01-01` },
+  { id: '1A', label: '1 año', since: back(365) },
+  { id: 'Todo', label: 'total', since: () => null },
+  { id: 'custom', short: 'Personalizado', label: 'en el período' },
+];
 
 // Long histories are drawn with the last value of each week.
 function weekly(points) {
@@ -39,7 +39,8 @@ function weekly(points) {
 // section: 'crypto' | 'cedears'. currency: 'ARS' | 'USD'.
 export function GrowthPanel({ section, currency }) {
   const { data, error, loading } = useApi(`/${section}/growth?currency=${currency}`);
-  const [rangeId, setRangeId] = useState('3M');
+  const [rangeId, setRangeId] = useState('1M');
+  const [custom, setCustom] = useState({ from: '', to: '' });
   const [showTable, setShowTable] = useState(false);
 
   if (loading) return <Loading />;
@@ -59,22 +60,77 @@ export function GrowthPanel({ section, currency }) {
     );
   }
 
-  const ranges = availableRanges(all);
-  const range = ranges.find((r) => r.id === rangeId) ?? ranges.at(-1);
-  const since = range.days ? toIso(toTime(all.at(-1).date) - range.days * DAY) : null;
-  const inRange = since ? all.filter((p) => p.date >= since) : all;
+  const range = RANGES.find((r) => r.id === rangeId) ?? RANGES[2];
+  const firstDate = all[0].date;
+  const lastDate = all.at(-1).date;
+  const from = range.id === 'custom' ? custom.from || firstDate : range.since(lastDate);
+  const to = range.id === 'custom' ? custom.to || lastDate : lastDate;
+  const inRange = all.filter((p) => (!from || p.date >= from) && p.date <= to);
   const points = inRange.length > 400 ? weekly(inRange) : inRange;
 
+  // Everything is measured from the first point of the range: there the
+  // performance is 0, and later it is the change in value minus the money
+  // put in or taken out since then.
   const first = points[0];
   const last = points.at(-1);
-  const contributed = last.invested - first.invested;
-  const performance = last.value - first.value - contributed;
-  const base = first.value + Math.max(contributed, 0);
-  const performancePct = points.length > 1 && base > 0 ? (performance / base) * 100 : null;
+  const performanceAt = (p) => p.value - first.value - (p.invested - first.invested);
+  const contributed = last ? last.invested - first.invested : 0;
+  const performance = last ? performanceAt(last) : 0;
+  const base = first ? first.value + Math.max(contributed, 0) : 0;
+  const performancePct = base > 0 ? (performance / base) * 100 : null;
   const tone = performance > 0 ? 'up' : performance < 0 ? 'down' : '';
-  const flows = data.flows.filter((f) => f.date >= first.date && f.date <= last.date);
+  const flows = last ? data.flows.filter((f) => f.date >= first.date && f.date <= last.date) : [];
   const goal = section === 'crypto' && currency === 'USD' ? data.goal : null;
-  const view = range.days && range.days <= 182 ? 'daily' : 'monthly';
+  const spanDays = last ? (toTime(last.date) - toTime(first.date)) / DAY : 0;
+  const view = spanDays <= 190 ? 'daily' : 'monthly';
+
+  const picker = (
+    <div class="range-picker">
+      <div class="ranges" role="radiogroup" aria-label="Período">
+        {RANGES.map((r) => (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={r === range}
+            aria-label={r.short}
+            title={r.short}
+            class={`${r === range ? 'active' : ''} ${r.short ? 'range-custom' : ''}`}
+            onClick={() => setRangeId(r.id)}
+          >
+            {r.short ? (
+              <>
+                <span class="range-text">{r.short}</span>
+                <Icon name="calendar" />
+              </>
+            ) : (
+              r.id
+            )}
+          </button>
+        ))}
+      </div>
+      {range.id === 'custom' && (
+        <div class="custom-range">
+          <label>
+            <span>Desde</span>
+            <input type="date" value={custom.from || firstDate} min={firstDate} max={lastDate} onInput={(e) => setCustom((c) => ({ ...c, from: e.currentTarget.value }))} />
+          </label>
+          <label>
+            <span>Hasta</span>
+            <input type="date" value={custom.to || lastDate} min={firstDate} max={lastDate} onInput={(e) => setCustom((c) => ({ ...c, to: e.currentTarget.value }))} />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+
+  if (points.length === 0) {
+    return (
+      <div class="growth">
+        {picker}
+        <p class="muted">No hay datos guardados entre esas fechas.</p>
+      </div>
+    );
+  }
 
   const series = points.map((p) => ({ x: toTime(p.date), value: p.value, invested: p.invested, date: p.date }));
   const labelIdx = [...new Set([0, Math.floor((series.length - 1) / 2), series.length - 1])];
@@ -83,12 +139,13 @@ export function GrowthPanel({ section, currency }) {
 
   return (
     <div class="growth">
+      {picker}
       <div class="growth-head">
         <div class="growth-figures">
           <div class="growth-figure">
-            <span>Rendimiento {range.id === 'Todo' ? 'total' : `en ${range.id}`}</span>
+            <span>Rendimiento {range.label}</span>
             <strong>
-              {points.length > 1 ? <SignedChange change={performance} pct={performancePct} currency={unit} /> : '—'}
+              <SignedChange change={performance} pct={performancePct} currency={unit} />
             </strong>
           </div>
           <div class="growth-figure">
@@ -100,15 +157,6 @@ export function GrowthPanel({ section, currency }) {
             <strong>{fmtMoney(last.invested, unit)}</strong>
           </div>
         </div>
-        {ranges.length > 1 && (
-          <div class="ranges" role="radiogroup" aria-label="Período">
-            {ranges.map((r) => (
-              <button type="button" role="radio" aria-checked={r === range} class={r === range ? 'active' : ''} onClick={() => setRangeId(r.id)}>
-                {r.id}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <LineChart
@@ -128,7 +176,7 @@ export function GrowthPanel({ section, currency }) {
             </span>
             <span class="tip-row">
               <span>Rendimiento</span>
-              <SignedChange change={p.value - p.invested} currency={unit} />
+              <SignedChange change={performanceAt(p)} currency={unit} />
             </span>
             {flowsAt(i).map((f) => (
               <span class="tip-flow">
@@ -138,6 +186,10 @@ export function GrowthPanel({ section, currency }) {
           </>
         )}
       />
+
+      {all.length === 1 && (
+        <p class="fx-note">Primer día del historial: este es el punto de partida (rendimiento 0). Se suma un punto por día.</p>
+      )}
 
       <div class="legend">
         <span>
@@ -179,7 +231,7 @@ export function GrowthPanel({ section, currency }) {
                     <td class="num">{fmtMoney(p.value, unit)}</td>
                     <td class="num">{fmtMoney(p.invested, unit)}</td>
                     <td class="num">
-                      <SignedChange change={p.value - p.invested} currency={unit} />
+                      <SignedChange change={performanceAt(p)} currency={unit} />
                     </td>
                     <td class="num">{moved ? fmtSignedMoney(moved, unit) : '—'}</td>
                   </tr>

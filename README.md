@@ -98,7 +98,9 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 - Una vez por día se guarda el valor de cada cartera: **cripto a las 23:59** (en USDT) y **CEDEARs/ETF a las 17:30 de lunes a viernes** (cierre del mercado argentino a las 17:00 más la demora de las cotizaciones). Además, cada cambio actualiza el valor del día en el momento.
 - Si el servidor estaba apagado a esa hora, al arrancar guarda el del día. Con precios desactualizados (API caída) no se guarda nada.
 - CEDEARs/ETF guarda una serie por moneda (ARS y USD, cada una con posiciones + disponible); el gráfico las suma en la moneda elegida.
-- Períodos **1M**, **3M**, **6M**, **1A** y **Todo** (aparecen a medida que hay historial). Arriba del gráfico: rendimiento del período (sin contar aportes), aportes netos e invertido.
+- Arriba del gráfico, selector de rango: **1D, 5D, 1M, 6M, YTD, 1A, Todo** y **Personalizado** (desde/hasta; en el celular es el ícono de calendario). Con poco historial, los rangos largos muestran lo que hay.
+- Todo se mide desde el primer punto del rango: ahí el rendimiento es 0, y después es el cambio de valor menos lo que entró o salió de plata. Abajo del selector: rendimiento del período, aportes netos e invertido.
+- **El historial arrancó de nuevo el 12/10/2026** (corrección única `data_fix_2026_10_growth_reset`): el anterior tenía datos de prueba. Si una cartera no tiene historial (nueva o recién reseteada), el servidor guarda el primer punto apenas arranca, sin esperar al horario del día.
 
 ## Precios y dólar MEP
 

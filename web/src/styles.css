@@ -351,13 +351,19 @@ input[type='date'], input[type='datetime-local'] { color-scheme: dark; }
 .growth-figure { display: flex; flex-direction: column; }
 .growth-figure > span { color: var(--ink-3); font-size: 0.8125rem; }
 .growth-figure strong { font-size: 1.05rem; }
-.ranges { display: flex; gap: 4px; }
+.range-picker { display: flex; flex-direction: column; gap: 8px; }
+.ranges { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px; align-self: flex-start; max-width: 100%; }
+.ranges::-webkit-scrollbar { display: none; }
+.range-custom .icon { display: none; }
 .ranges button {
   border: 0; background: none; color: var(--ink-2); font-weight: 700; font-size: 0.8125rem;
-  padding: 6px 11px; border-radius: 999px; cursor: pointer;
+  padding: 6px 11px; border-radius: 999px; cursor: pointer; flex: none; white-space: nowrap;
 }
 .ranges button:hover { color: var(--ink); }
 .ranges button.active { background: var(--surface-3); color: var(--ink); }
+.custom-range { display: flex; gap: 10px; flex-wrap: wrap; }
+.custom-range label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8125rem; color: var(--ink-3); }
+.custom-range input { min-height: 38px; padding: 6px 10px; width: auto; }
 .legend { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 0.8125rem; color: var(--ink-2); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--ink-3); }
@@ -480,6 +486,12 @@ input[type='date'], input[type='datetime-local'] { color-scheme: dark; }
   .asset-row { grid-template-columns: 40px minmax(0, 1fr) 64px auto; gap: 10px; padding: 12px 10px; }
   .asset-spark { width: 64px; height: 28px; }
   .details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ranges { align-self: stretch; }
+  .ranges { justify-content: space-between; }
+  .ranges button { padding: 6px 8px; }
+  /* No room for the word on a phone: a calendar icon instead. */
+  .range-custom .range-text { display: none; }
+  .range-custom .icon { display: block; width: 16px; height: 16px; }
   .assets { margin: 0 -10px; }
 
   /* Dialogs become bottom sheets, easy to reach with the thumb. */
