@@ -36,6 +36,21 @@ export const binanceProvider = {
     return out;
   },
 
+  // Daily close per UTC day between two dates (YYYY-MM-DD), for repairing
+  // the history after a correction. null → Binance does not list it.
+  async getDailyCloses(asset, from, to) {
+    if (asset === 'USDT') return { currency: 'USDT', closes: [{ date: from, close: 1 }] };
+    const start = Date.parse(`${from}T00:00:00Z`);
+    const end = Date.parse(`${to}T23:59:59Z`);
+    try {
+      const klines = await fetchJson(`${BASE}/klines?symbol=${pair(asset)}&interval=1d&startTime=${start}&endTime=${end}&limit=1000`);
+      return { currency: 'USDT', closes: klines.map((k) => ({ date: new Date(k[0]).toISOString().slice(0, 10), close: Number(k[4]) })) };
+    } catch (err) {
+      if (isUnknownSymbol(err)) return null;
+      throw err;
+    }
+  },
+
   // Last 24 h in 5-minute candles (close price). null → no chart for it.
   async getIntraday(asset) {
     if (asset === 'USDT') return null;

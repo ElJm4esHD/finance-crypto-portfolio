@@ -5,6 +5,7 @@ import { createCryptoService } from './crypto/service.js';
 import { createCedearService } from './cedears/service.js';
 import { createSnapshotService } from './snapshots/service.js';
 import { createGrowthService } from './growth/service.js';
+import { createSnapshotRepairs } from './snapshots/repairs.js';
 import { NotFoundError, UserError } from './lib/errors.js';
 import { localDate } from './lib/dates.js';
 import { cryptoCsv, cedearsCsv } from './export/csv.js';
@@ -24,13 +25,24 @@ const NO_FX = { get: () => null, history: () => [] };
 // so the UI can convert ARS ↔ USD.
 export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir, logger = false }) {
   const app = Fastify({ logger, logController: new LogController({ disableRequestLogging: true }) });
-  const crypto = createCryptoService(db, cryptoPrices, { log: app.log });
-  const cedears = createCedearService(db, marketPrices, { fx, log: app.log });
+  // Past snapshots corrected after an edit; past prices come from the services.
+  const repairs = createSnapshotRepairs(db, {
+    closes: { crypto: (...args) => crypto.getDailyCloses(...args), cedears: (...args) => cedears.getDailyCloses(...args) },
+    fx,
+    log: app.log,
+  });
+  const crypto = createCryptoService(db, cryptoPrices, { log: app.log, repairs });
+  const cedears = createCedearService(db, marketPrices, { fx, log: app.log, repairs });
   const snapshots = createSnapshotService(db, { crypto, cedears }, app.log);
   const growth = createGrowthService(db, { crypto, cedears, fx });
 
   // Keep today's snapshot in sync after every change (errors are logged inside).
   const refresh = (portfolio) => void snapshots.capture(portfolio);
+  // After a correction: today's value, then the past (needs past prices).
+  const corrected = (portfolio) => {
+    refresh(portfolio);
+    void repairs.process();
+  };
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof UserError) return reply.code(err.statusCode).send({ error: err.message });
@@ -58,14 +70,32 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
 
   app.put('/api/crypto/holdings', async (req) => {
     const row = crypto.setHolding(req.body?.asset, req.body?.amount);
-    refresh('crypto');
+    corrected('crypto');
     return row;
   });
 
   app.delete('/api/crypto/holdings/:asset', async (req, reply) => {
     crypto.deleteHolding(req.params.asset);
-    refresh('crypto');
+    corrected('crypto');
     return reply.code(204).send();
+  });
+
+  app.put('/api/crypto/assets/:asset', async (req) => {
+    const row = crypto.renameAsset(req.params.asset, req.body?.asset);
+    corrected('crypto');
+    return row;
+  });
+
+  app.put('/api/crypto/exchanges/:id', async (req) => {
+    const ex = crypto.updateExchange(parseId(req.params.id), req.body ?? {});
+    corrected('crypto');
+    return ex;
+  });
+
+  app.put('/api/crypto/flows/:id', async (req) => {
+    const flow = crypto.updateFlow(parseId(req.params.id), req.body ?? {});
+    corrected('crypto');
+    return flow;
   });
 
   app.get('/api/crypto/exchanges', async () => crypto.listExchanges());
@@ -124,6 +154,24 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
     return reply.code(201).send(op);
   });
 
+  app.put('/api/cedears/operations/:id', async (req) => {
+    const op = cedears.updateOperation(parseId(req.params.id), req.body ?? {});
+    corrected('cedears');
+    return op;
+  });
+
+  app.put('/api/cedears/positions', async (req) => {
+    const res = cedears.renamePosition(req.body ?? {});
+    corrected('cedears');
+    return res;
+  });
+
+  app.put('/api/cedears/cash', async (req) => {
+    const cash = cedears.setCash(req.body ?? {});
+    corrected('cedears');
+    return { cash };
+  });
+
   app.delete('/api/cedears/operations/:id', async (req, reply) => {
     cedears.deleteOperation(parseId(req.params.id));
     refresh('cedears');
@@ -153,5 +201,5 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
     app.register(fastifyStatic, { root: publicDir });
   }
 
-  return { app, snapshots };
+  return { app, snapshots, repairs, cedears, crypto };
 }

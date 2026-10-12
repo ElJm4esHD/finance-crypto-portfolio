@@ -67,8 +67,15 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 - Cripto no registraba aportes antes de esta función: lo invertido arranca en el valor del primer snapshot guardado (**invertido inicial**). Si sabés el número real, corregilo con el lápiz junto a "Invertido".
 - El gráfico de crecimiento muestra el invertido como línea punteada y marca cada aporte o retiro, así un salto por un depósito no parece ganancia. Cada día se convierte con el dólar MEP de ese día (`fx_rates`; los días anteriores al primer MEP guardado usan el primero).
 
+### Corregir datos cargados mal ("Editar")
+- En Cartera, tocando un activo aparece **Editar**. Sirve para arreglar errores de carga **como si el dato siempre hubiera sido así**: no crea compras, ventas, aportes ni retiros nuevos en el historial.
+- CEDEARs/ETF: cambiar el ticker o la moneda de la posición (se aplica a todas sus operaciones) y corregir cantidad, precio, comisión o fecha de cada operación.
+- Cripto: renombrar la moneda (también en intercambios y aportes), corregir el saldo y editar cantidades y fechas de sus intercambios y aportes.
+- **Disponible** (lápiz en el resumen de CEDEARs/ETF): pone el monto real en dólares y en pesos. La diferencia va al saldo inicial, así que lo invertido se mueve igual y **el rendimiento no cambia**.
+- Los snapshots ya guardados también se corrigen, con los precios de cierre de cada día (Binance o Yahoo), para que el gráfico de crecimiento no muestre un salto. Si la API de precios no responde, la corrección del historial queda pendiente (`snapshot_repairs`) y se aplica sola cuando vuelve (se reintenta al arrancar y cada hora). El día de hoy siempre se recalcula en vivo.
+
 ### Cripto
-- Los **saldos** se cargan a mano al empezar y se pueden corregir cuando quieras (Cartera → tocar la moneda → Corregir saldo).
+- Los **saldos** se cargan a mano al empezar y se pueden corregir cuando quieras (Cartera → tocar la moneda → Editar).
 - Cada **intercambio** resta lo que entregás, suma lo que recibís y descuenta la comisión en la moneda que indiques. No se calcula ningún tipo de cambio: se guarda lo que declarás.
 - Si un intercambio dejaría un saldo en negativo, se rechaza con un mensaje claro (suele significar que falta corregir un saldo).
 - **Borrar** un intercambio revierte su efecto sobre los saldos.
@@ -158,6 +165,8 @@ El script de demo se niega a correr sobre una base que ya tiene datos.
 | GET | `/api/crypto/holdings` | Saldos valuados, total, invertido, rendimiento, objetivo y MEP |
 | PUT | `/api/crypto/holdings` | `{ asset, amount }` — crear/corregir saldo |
 | DELETE | `/api/crypto/holdings/:asset` | Quitar una moneda |
+| PUT | `/api/crypto/assets/:asset` | `{ asset }` — renombrar (corrección) |
+| PUT | `/api/crypto/exchanges/:id`, `/api/crypto/flows/:id` | Corregir un intercambio o aporte |
 | GET/POST | `/api/crypto/exchanges` | Listar / registrar intercambio |
 | DELETE | `/api/crypto/exchanges/:id` | Borrar (revierte saldos) |
 | GET/POST | `/api/crypto/flows` | Listar / registrar aporte o retiro (`{ type, asset, amount, valueUsdt?, executedAt }`) |
@@ -168,6 +177,9 @@ El script de demo se niega a correr sobre una base que ya tiene datos.
 | GET | `/api/crypto/export.csv` | Cartera + historial en CSV |
 | GET | `/api/cedears/portfolio` | Posiciones, disponible y totales (con invertido y rendimiento) y MEP |
 | GET/POST | `/api/cedears/operations` | Listar / registrar compra o venta |
+| PUT | `/api/cedears/operations/:id` | Corregir una operación |
+| PUT | `/api/cedears/positions` | `{ ticker, currency, newTicker, newCurrency }` — renombrar o cambiar de moneda |
+| PUT | `/api/cedears/cash` | `{ USD, ARS }` — corregir el disponible |
 | DELETE | `/api/cedears/operations/:id` | Borrar operación |
 | GET/POST | `/api/cedears/cash-movements` | Listar / registrar depósito o retiro |
 | DELETE | `/api/cedears/cash-movements/:id` | Borrar movimiento |

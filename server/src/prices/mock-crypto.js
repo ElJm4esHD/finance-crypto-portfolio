@@ -1,4 +1,4 @@
-import { dailyDrift, fakeIntraday, hash, yesterday } from './mock-util.js';
+import { dailyDrift, eachDate, fakeIntraday, hash, yesterday } from './mock-util.js';
 
 // MOCK — precios inventados para poder usar la app sin API. Reemplazar por ./binance.js.
 const STABLECOINS = new Set(['USDT', 'USDC', 'DAI', 'FDUSD', 'TUSD', 'BUSD', 'USDP', 'PYUSD']);
@@ -23,6 +23,10 @@ export const mockCryptoProvider = {
         : { price: priceOf(asset), previousClose: priceOf(asset, yesterday()) };
     }
     return out;
+  },
+  async getDailyCloses(asset, from, to) {
+    const close = (d) => (STABLECOINS.has(asset) ? 1 : priceOf(asset, new Date(`${d}T12:00:00Z`)));
+    return { currency: 'USDT', closes: eachDate(from, to).map((date) => ({ date, close: close(date) })) };
   },
   async getIntraday(asset) {
     if (STABLECOINS.has(asset)) return null;

@@ -5,6 +5,7 @@ import { ChangeChip, EmptyState, ErrorMessage, Icon, Loading, PriceNotice, Signe
 import { convert, CurrencySelect, MepNote } from '../components/money.jsx';
 import { AssetList } from '../components/AssetList.jsx';
 import { GrowthPanel } from '../components/GrowthPanel.jsx';
+import { EditCash, EditPosition } from './EditPosition.jsx';
 
 export const CEDEAR_CURRENCY_KEY = 'currency:cedears';
 const CURRENCIES = ['ARS', 'USD'];
@@ -42,6 +43,7 @@ export function CedearPortfolio({ onNewOperation }) {
   const isPhone = useMediaQuery(PHONE_QUERY);
   const [picked, setPicked] = useStoredState(CEDEAR_CURRENCY_KEY, 'ARS');
   const [showClosed, setShowClosed] = useState(false);
+  const [editing, setEditing] = useState(null); // { ticker, currency } | 'cash'
 
   if (loading) return <Loading />;
   if (!data) return <ErrorMessage>{error}</ErrorMessage>;
@@ -85,6 +87,11 @@ export function CedearPortfolio({ onNewOperation }) {
         ],
         [rate ? 'Peso en la cartera' : `Peso en ${p.currency}`, isClosed ? '—' : fmtPct(weight)],
       ],
+      actions: (
+        <button type="button" class="btn btn-secondary btn-sm" onClick={() => setEditing({ ticker: p.ticker, currency: p.currency })}>
+          <Icon name="edit" /> Editar
+        </button>
+      ),
     };
   });
 
@@ -136,7 +143,12 @@ export function CedearPortfolio({ onNewOperation }) {
             ))}
             {/* Real money in each currency, never converted. */}
             <div class="stat-group">
-              <p class="stat-group-title">Disponible</p>
+              <p class="stat-group-title stat-label">
+                Disponible
+                <button type="button" class="icon-btn sm" title="Corregir el disponible" aria-label="Corregir disponible" onClick={() => setEditing('cash')}>
+                  <Icon name="edit" />
+                </button>
+              </p>
               <div class="stat">
                 <span class="stat-label">Dólares</span>
                 <span class="stat-value">{fmtMoney(cash.USD, 'USD')}</span>
@@ -177,6 +189,9 @@ export function CedearPortfolio({ onNewOperation }) {
           </>
         )}
       </section>
+
+      {editing === 'cash' && <EditCash cash={cash} onClose={() => setEditing(null)} />}
+      {editing && editing !== 'cash' && <EditPosition ticker={editing.ticker} currency={editing.currency} onClose={() => setEditing(null)} />}
     </div>
   );
 }

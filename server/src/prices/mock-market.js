@@ -1,4 +1,4 @@
-import { dailyDrift, fakeIntraday, hash, yesterday } from './mock-util.js';
+import { dailyDrift, eachDate, fakeIntraday, hash, yesterday } from './mock-util.js';
 import { SESSION } from './market-hours.js';
 
 // MOCK — cotizaciones inventadas alrededor del precio promedio de compra, para
@@ -23,6 +23,13 @@ export const mockMarketProvider = {
       };
     }
     return out;
+  },
+  async getDailyCloses(ticker, from, to) {
+    const { base, currency } = bases.get(ticker) ?? { base: baseOf({ ticker, currency: 'USD' }), currency: 'USD' };
+    return {
+      currency,
+      closes: eachDate(from, to).map((date) => ({ date, close: base * dailyDrift(ticker, new Date(`${date}T12:00:00Z`)) })),
+    };
   },
   async getIntraday(ticker) {
     const { base, currency } = bases.get(ticker) ?? { base: baseOf({ ticker, currency: 'USD' }), currency: 'USD' };

@@ -7,6 +7,7 @@ import { convert, CurrencySelect, MepNote } from '../components/money.jsx';
 import { AssetList } from '../components/AssetList.jsx';
 import { GrowthPanel } from '../components/GrowthPanel.jsx';
 import { GoalModal, GoalProgress } from './GoalProgress.jsx';
+import { EditAsset } from './EditAsset.jsx';
 
 // Crypto is valued in USDT (1:1 with USD); ARS uses the dólar MEP of the day.
 export const CRYPTO_CURRENCY_KEY = 'currency:crypto';
@@ -50,7 +51,7 @@ export function CryptoHoldings() {
     ],
     actions: (
       <button type="button" class="btn btn-secondary btn-sm" onClick={() => setEditing(h)}>
-        <Icon name="edit" /> Corregir saldo
+        <Icon name="edit" /> Editar
       </button>
     ),
   }));
@@ -145,59 +146,10 @@ export function CryptoHoldings() {
         )}
       </section>
 
-      {editing && <HoldingModal holding={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditAsset holding={editing} onClose={() => setEditing(null)} />}
       {modal === 'opening' && <OpeningModal onClose={() => setModal(null)} />}
       {modal === 'goal' && <GoalModal goal={data.goal} onClose={() => setModal(null)} />}
     </div>
-  );
-}
-
-// Corrects a balance by hand. Not a contribution: it does not change what
-// was invested (that is "Nuevo movimiento → Aporte / Retiro").
-function HoldingModal({ holding, onClose }) {
-  const isNew = !holding.asset;
-  const [asset, setAsset] = useState(holding.asset);
-  const [amount, setAmount] = useState(isNew ? '' : toInputValue(holding.amount));
-  const { run, busy, error, setError } = useMutation();
-
-  async function save(e) {
-    e.preventDefault();
-    const n = parseNumber(amount);
-    if (n === null || Number.isNaN(n)) return setError('Ingresá una cantidad válida.');
-    const { ok } = await run(() => api.put('/crypto/holdings', { asset, amount: n }));
-    if (ok) onClose();
-  }
-
-  async function remove() {
-    if (!window.confirm(`¿Eliminar ${holding.asset} de la lista? El historial no se borra.`)) return;
-    const { ok } = await run(() => api.del(`/crypto/holdings/${encodeURIComponent(holding.asset)}`));
-    if (ok) onClose();
-  }
-
-  return (
-    <Modal title={isNew ? 'Agregar moneda' : `Corregir saldo de ${holding.asset}`} onClose={onClose}>
-      <form onSubmit={save} class="form">
-        {isNew && (
-          <Field label="Moneda" hint="El ticker, por ejemplo BTC, ETH o USDT.">
-            <input value={asset} onInput={(e) => setAsset(e.currentTarget.value.toUpperCase())} autofocus required maxLength={20} autocomplete="off" />
-          </Field>
-        )}
-        <Field label="Cantidad que tenés hoy" hint="Es una corrección: no cuenta como plata invertida. Para registrar plata nueva usá Nuevo movimiento → Aporte.">
-          <input value={amount} onInput={(e) => setAmount(e.currentTarget.value)} inputMode="decimal" autocomplete="off" required autofocus={!isNew} placeholder="0,00" />
-        </Field>
-        <ErrorMessage>{error}</ErrorMessage>
-        <div class="form-actions">
-          {!isNew && (
-            <button type="button" class="btn btn-danger-text" onClick={remove} disabled={busy}>
-              Eliminar moneda
-            </button>
-          )}
-          <button type="submit" class="btn btn-primary" disabled={busy}>
-            Guardar
-          </button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 

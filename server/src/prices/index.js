@@ -17,6 +17,9 @@
 //   id, name: string · mock: boolean (true → la UI avisa "precios simulados")
 //   getQuotes(assets: string[])     → Promise<{ [asset]: Quote | null }>  en USDT
 //   getIntraday(asset)              → Promise<{ currency, points: [{ t, value }] } | null>
+//   getDailyCloses(asset, from, to) → Promise<{ currency, closes: [{ date, close }] } | null>
+//     Daily closes between two dates (YYYY-MM-DD), to repair the history
+//     after a correction. Same for the CEDEARs/ETF provider (by ticker).
 //     null = la API no tiene ese activo (no rompe nada). Tirar un error = API caída.
 //
 // Contrato — proveedor CEDEARs/ETF (MARKET_PRICE_PROVIDER):
@@ -88,6 +91,7 @@ export function createCryptoPrices({ db, provider, log }) {
     ...describe(provider),
     getQuotes: (assets) => cache.get(assets.map((key) => ({ key }))),
     getIntraday: (asset) => charts(asset, () => provider.getIntraday(asset)),
+    getDailyCloses: (asset, from, to) => provider.getDailyCloses(asset, from, to),
   };
 }
 
@@ -102,6 +106,7 @@ export function createMarketPrices({ db, provider, log }) {
     ...describe(provider),
     getQuotes: (items) => cache.get(items.map((i) => ({ key: i.ticker, ...i }))),
     getIntraday: (ticker) => charts(ticker, () => provider.getIntraday(ticker)),
+    getDailyCloses: (ticker, from, to) => provider.getDailyCloses(ticker, from, to),
   };
 }
 

@@ -19,6 +19,15 @@ export function dailyDrift(seed, date = new Date()) {
   return 1.05 + 0.12 * Math.sin(day / 9 + phase) + 0.03 * Math.sin(day / 2.3 + phase * 2);
 }
 
+// Every date (YYYY-MM-DD) from `from` to `to`, inclusive.
+export function eachDate(from, to) {
+  const out = [];
+  for (let t = Date.parse(`${from}T00:00:00Z`); t <= Date.parse(`${to}T00:00:00Z`); t += 86400000) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 // Fake intraday line from `from` to `to` (ms) every 5 minutes, ending at `end`.
 export function fakeIntraday(seed, from, to, end) {
   const step = 5 * 60_000;

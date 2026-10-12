@@ -18,7 +18,7 @@ const fxProvider = getFxProvider();
 // Logs through Fastify's logger (only used after the app is built).
 const fx = createFxService({ db, provider: fxProvider, log: { info: (m) => app.log.info(m), warn: (m) => app.log.warn(m) } });
 
-const { app, snapshots } = buildApp({
+const { app, snapshots, repairs } = buildApp({
   db,
   cryptoPrices,
   marketPrices,
@@ -66,10 +66,14 @@ async function catchUp() {
 }
 setTimeout(catchUp, 3_000);
 
-// One database backup per day (it only writes once a day; checked hourly).
-const backup = () => dailyBackup(db, config.dataDir, config.backupKeep, app.log);
-setTimeout(backup, 5_000);
-const backupTimer = setInterval(backup, 60 * 60_000);
+// One database backup per day (it only writes once a day; checked hourly),
+// and any correction of the history still waiting for a price API.
+const hourly = async () => {
+  await dailyBackup(db, config.dataDir, config.backupKeep, app.log);
+  await repairs.process();
+};
+setTimeout(hourly, 5_000);
+const backupTimer = setInterval(hourly, 60 * 60_000);
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, async () => {

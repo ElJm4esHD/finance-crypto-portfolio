@@ -150,6 +150,16 @@ export const MIGRATIONS = [
       setSetting(db, 'crypto_invested_opening_date', first.date);
     }
   },
+  // v6: corrections that still have to be applied to the history of daily
+  // snapshots because they need past prices (see snapshots/repairs.js).
+  `
+  CREATE TABLE snapshot_repairs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    portfolio  TEXT NOT NULL CHECK (portfolio IN ('crypto', 'cedears')),
+    terms      TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  `,
 ];
 
 export function openDb(file) {

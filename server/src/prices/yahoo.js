@@ -49,6 +49,23 @@ export const yahooProvider = {
     return out;
   },
 
+  // Daily close per trading day between two dates (YYYY-MM-DD), in the
+  // exchange's own calendar. null → Yahoo does not know the ticker.
+  async getDailyCloses(ticker, from, to) {
+    const p1 = Math.floor(Date.parse(`${from}T00:00:00Z`) / 1000) - 86400;
+    const p2 = Math.floor(Date.parse(`${to}T23:59:59Z`) / 1000) + 86400;
+    const result = await chart(ticker, `period1=${p1}&period2=${p2}&interval=1d`);
+    if (!result) return null;
+    const offset = result.meta.gmtoffset ?? 0;
+    const closes = result.indicators?.quote?.[0]?.close ?? [];
+    return {
+      currency: result.meta.currency ?? null,
+      closes: (result.timestamp ?? [])
+        .map((t, i) => ({ date: new Date((t + offset) * 1000).toISOString().slice(0, 10), close: closes[i] }))
+        .filter((c) => c.close != null),
+    };
+  },
+
   // Today's session (or the last one, when the market is closed) in 5-minute bars.
   async getIntraday(ticker) {
     const result = await chart(ticker, 'range=1d&interval=5m');

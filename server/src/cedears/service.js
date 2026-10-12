@@ -1,4 +1,5 @@
-import { getSetting } from '../db.js';
+import { getSetting, setSetting } from '../db.js';
+import { NO_REPAIRS } from '../snapshots/repairs.js';
 import { UserError, NotFoundError } from '../lib/errors.js';
 import { fmt } from '../lib/format.js';
 import { cents, clean, isNegative, isNegativeMoney } from '../lib/num.js';
@@ -63,7 +64,20 @@ export function computeState(operations, cashMovements, openingCash = {}) {
 
 // fx: { get() → { rate } | null } — dólar MEP, only used when a price comes in
 // another currency than its position (e.g. a USD ticker held in pesos).
-export function createCedearService(db, priceProvider, { fx = null, log } = {}) {
+// What an operation adds to the past snapshots (sign −1 takes it out): its
+// units from its date on, and the money it moved.
+function operationTerms(op, sign) {
+  const gross = op.quantity * op.price;
+  const units = op.type === 'buy' ? op.quantity : -op.quantity;
+  const money = op.type === 'buy' ? -(gross + op.commission) : gross - op.commission;
+  return [
+    { kind: 'asset', symbol: op.ticker, currency: op.currency, from: op.date, amount: sign * units, fallback: op.price },
+    { kind: 'cash', currency: op.currency, from: op.date, amount: sign * money },
+  ];
+}
+
+// repairs: corrects past snapshots after an edit (snapshots/repairs.js).
+export function createCedearService(db, priceProvider, { fx = null, log, repairs = NO_REPAIRS } = {}) {
   const prices = createMarketPrices({ db, provider: priceProvider, log });
   const q = {
     operations: db.prepare('SELECT * FROM cedear_operations ORDER BY date DESC, id DESC'),
@@ -72,6 +86,10 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
       INSERT INTO cedear_operations (type, ticker, quantity, price, currency, commission, date)
       VALUES (@type, @ticker, @quantity, @price, @currency, @commission, @date)`),
     deleteOperation: db.prepare('DELETE FROM cedear_operations WHERE id = ?'),
+    updateOperation: db.prepare(`
+      UPDATE cedear_operations SET ticker = @ticker, quantity = @quantity, price = @price, currency = @currency,
+        commission = @commission, date = @date WHERE id = @id`),
+    moveOperation: db.prepare('UPDATE cedear_operations SET ticker = ?, currency = ? WHERE id = ?'),
     movements: db.prepare('SELECT * FROM cedear_cash_movements ORDER BY date DESC, id DESC'),
     movement: db.prepare('SELECT * FROM cedear_cash_movements WHERE id = ?'),
     insertMovement: db.prepare(`
@@ -84,18 +102,29 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
   const stateOf = (operations, movements) => computeState(operations, movements, openingCash());
   const currentState = () => stateOf(q.operations.all(), q.movements.all());
 
-  // Guard used when deleting history: the remaining history must still make sense.
+  // Guard used when deleting or editing history: it must still make sense.
   function assertConsistent(state, what) {
     for (const c of CURRENCIES) {
       if (isNegativeMoney(state.cash[c])) {
-        throw new UserError(`No se puede borrar ${what}: el dinero disponible en ${c} quedaría en negativo (${fmt(state.cash[c])}).`);
+        throw new UserError(`No se puede ${what}: el dinero disponible en ${c} quedaría en negativo (${fmt(state.cash[c])}).`);
       }
     }
     for (const pos of state.positions.values()) {
       if (isNegative(pos.quantity)) {
-        throw new UserError(`No se puede borrar ${what}: la posición de ${pos.ticker} quedaría en negativo.`);
+        throw new UserError(`No se puede ${what}: la posición de ${pos.ticker} quedaría en negativo.`);
       }
     }
+  }
+
+  function parseOperation(input) {
+    return {
+      ticker: toTicker(input.ticker, 'el ticker'),
+      quantity: toNumber(input.quantity, 'La cantidad'),
+      price: toNumber(input.price, 'El precio', { allowMin: true }),
+      currency: oneOf(input.currency, CURRENCIES, 'La moneda'),
+      commission: input.commission == null || input.commission === '' ? 0 : toNumber(input.commission, 'La comisión', { allowMin: true }),
+      date: toDate(input.date),
+    };
   }
 
   // Quote of each open position in its own currency. Prices are fetched once
@@ -198,15 +227,7 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
     },
 
     createOperation(input) {
-      const op = {
-        type: oneOf(input.type, ['buy', 'sell'], 'El tipo de operación'),
-        ticker: toTicker(input.ticker, 'el ticker'),
-        quantity: toNumber(input.quantity, 'La cantidad'),
-        price: toNumber(input.price, 'El precio', { allowMin: true }),
-        currency: oneOf(input.currency, CURRENCIES, 'La moneda'),
-        commission: input.commission == null || input.commission === '' ? 0 : toNumber(input.commission, 'La comisión', { allowMin: true }),
-        date: toDate(input.date),
-      };
+      const op = { type: oneOf(input.type, ['buy', 'sell'], 'El tipo de operación'), ...parseOperation(input) };
 
       return db.transaction(() => {
         const { positions, cash } = currentState();
@@ -237,10 +258,73 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
         const op = q.operation.get(id);
         if (!op) throw new NotFoundError('Esa operación no existe.');
         const remaining = q.operations.all().filter((o) => o.id !== op.id);
-        assertConsistent(stateOf(remaining, q.movements.all()), `esta ${op.type === 'buy' ? 'compra' : 'venta'}`);
+        assertConsistent(stateOf(remaining, q.movements.all()), `borrar esta ${op.type === 'buy' ? 'compra' : 'venta'}`);
         q.deleteOperation.run(id);
       })();
     },
+
+    // ── Corrections ("Editar") ──────────────────────────────
+    // They fix data that was loaded wrong, as if it had always been right:
+    // no new operation or movement shows up in the history, and the past
+    // snapshots are corrected (snapshots/repairs.js), so neither the growth
+    // chart nor the performance shows a jump.
+
+    // Fixes ticker, currency, quantity, price, commission or date of one
+    // operation (a buy stays a buy).
+    updateOperation(id, input) {
+      return db.transaction(() => {
+        const old = q.operation.get(id);
+        if (!old) throw new NotFoundError('Esa operación no existe.');
+        const op = { ...parseOperation(input), id, type: old.type };
+        const others = q.operations.all().filter((o) => o.id !== id);
+        assertConsistent(stateOf([...others, op], q.movements.all()), 'guardar el cambio');
+        q.updateOperation.run(op);
+        repairs.enqueue('cedears', [...operationTerms(old, -1), ...operationTerms(op, 1)]);
+        return q.operation.get(id);
+      })();
+    },
+
+    // Renames a position (e.g. SPYD that really was SPY) and/or moves it to
+    // the other currency: every operation keeps its quantity, price and date.
+    renamePosition(input) {
+      const ticker = toTicker(input.ticker, 'el ticker');
+      const currency = oneOf(input.currency, CURRENCIES, 'La moneda');
+      const newTicker = toTicker(input.newTicker, 'el ticker nuevo');
+      const newCurrency = oneOf(input.newCurrency ?? currency, CURRENCIES, 'La moneda nueva');
+      return db.transaction(() => {
+        const all = q.operations.all();
+        const ops = all.filter((o) => o.ticker === ticker && o.currency === currency);
+        if (ops.length === 0) throw new NotFoundError(`No hay operaciones de ${ticker} en ${currency}.`);
+        const moved = ops.map((o) => ({ ...o, ticker: newTicker, currency: newCurrency }));
+        const others = all.filter((o) => !(o.ticker === ticker && o.currency === currency));
+        assertConsistent(stateOf([...others, ...moved], q.movements.all()), 'guardar el cambio');
+        for (const o of moved) q.moveOperation.run(o.ticker, o.currency, o.id);
+        repairs.enqueue('cedears', [...ops.flatMap((o) => operationTerms(o, -1)), ...moved.flatMap((o) => operationTerms(o, 1))]);
+        return { ticker: newTicker, currency: newCurrency, operations: moved.length };
+      })();
+    },
+
+    // Sets the available cash of each currency given to its real amount. The
+    // difference goes to the opening balance: no deposit or withdrawal is
+    // recorded, and since what was invested moves by the same amount, the
+    // performance does not change.
+    setCash(input) {
+      return db.transaction(() => {
+        const { cash } = currentState();
+        const opening = openingCash();
+        for (const c of CURRENCIES) {
+          if (input?.[c] == null || input[c] === '') continue;
+          const target = toNumber(input[c], `El disponible en ${c}`, { allowMin: true });
+          const delta = cents(target - cash[c]);
+          if (delta === 0) continue;
+          setSetting(db, openingCashKey(c), clean(opening[c] + delta));
+          repairs.enqueue('cedears', [{ kind: 'cash', currency: c, from: null, amount: delta }]);
+        }
+        return currentState().cash;
+      })();
+    },
+
+    getDailyCloses: (ticker, from, to) => prices.getDailyCloses(ticker, from, to),
 
     listCashMovements() {
       return q.movements.all();
@@ -276,7 +360,7 @@ export function createCedearService(db, priceProvider, { fx = null, log } = {}) 
         const m = q.movement.get(id);
         if (!m) throw new NotFoundError('Ese movimiento no existe.');
         const remaining = q.movements.all().filter((x) => x.id !== m.id);
-        assertConsistent(stateOf(q.operations.all(), remaining), `este ${m.type === 'deposit' ? 'depósito' : 'retiro'}`);
+        assertConsistent(stateOf(q.operations.all(), remaining), `borrar este ${m.type === 'deposit' ? 'depósito' : 'retiro'}`);
         q.deleteMovement.run(id);
       })();
     },
