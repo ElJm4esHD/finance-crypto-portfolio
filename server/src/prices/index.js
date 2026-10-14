@@ -17,6 +17,9 @@
 //   id, name: string · mock: boolean (true → la UI avisa "precios simulados")
 //   getQuotes(assets: string[])     → Promise<{ [asset]: Quote | null }>  en USDT
 //   getIntraday(asset)              → Promise<{ currency, points: [{ t, value }] } | null>
+//   getHistory(asset, range, { from, to })
+//                                   → same shape, over a range of ./ranges.js
+//                                     (1D … Todo, or custom dates)
 //   getDailyCloses(asset, from, to) → Promise<{ currency, closes: [{ date, close }] } | null>
 //     Daily closes between two dates (YYYY-MM-DD), to repair the history
 //     after a correction. Same for the CEDEARs/ETF provider (by ticker).
@@ -66,12 +69,14 @@ const CRYPTO_TTL_MS = 3 * 60_000;
 const MARKET_TTL_MS = 5 * 60_000;
 const marketFresh = (entry, now) => now - entry.fetchedAt < MARKET_TTL_MS || (!isMarketOpen(now) && entry.fetchedAt >= lastSettledClose(now));
 
-// Intraday charts are only kept in memory: without the API there is no chart.
+// Price charts are only kept in memory: without the API there is no chart.
+// The day's chart follows `isFresh`; longer ranges change slowly (1 hour).
+const historyFresh = (range, dayFresh) => (range === '1D' ? dayFresh : range === '5D' ? maxAge(15 * 60_000) : maxAge(60 * 60_000));
 function chartCache(isFresh) {
   const mem = new Map();
-  return async (key, load) => {
+  return async (key, load, fresh = isFresh) => {
     const hit = mem.get(key);
-    if (hit && isFresh(hit, Date.now())) return hit.data;
+    if (hit && fresh(hit, Date.now())) return hit.data;
     const data = await load();
     mem.set(key, { data, fetchedAt: Date.now() });
     return data;
@@ -90,7 +95,9 @@ export function createCryptoPrices({ db, provider, log }) {
   return {
     ...describe(provider),
     getQuotes: (assets) => cache.get(assets.map((key) => ({ key }))),
-    getIntraday: (asset) => charts(asset, () => provider.getIntraday(asset)),
+    getIntraday: (asset) => charts(`${asset}|1D`, () => provider.getIntraday(asset)),
+    getHistory: (asset, range, dates = {}) =>
+      charts(`${asset}|${range}|${dates.from ?? ''}|${dates.to ?? ''}`, () => provider.getHistory(asset, range, dates), historyFresh(range, maxAge(5 * 60_000))),
     getDailyCloses: (asset, from, to) => provider.getDailyCloses(asset, from, to),
   };
 }
@@ -105,7 +112,9 @@ export function createMarketPrices({ db, provider, log }) {
   return {
     ...describe(provider),
     getQuotes: (items) => cache.get(items.map((i) => ({ key: i.ticker, ...i }))),
-    getIntraday: (ticker) => charts(ticker, () => provider.getIntraday(ticker)),
+    getIntraday: (ticker) => charts(`${ticker}|1D`, () => provider.getIntraday(ticker)),
+    getHistory: (ticker, range, dates = {}) =>
+      charts(`${ticker}|${range}|${dates.from ?? ''}|${dates.to ?? ''}`, () => provider.getHistory(ticker, range, dates), historyFresh(range, marketFresh)),
     getDailyCloses: (ticker, from, to) => provider.getDailyCloses(ticker, from, to),
   };
 }

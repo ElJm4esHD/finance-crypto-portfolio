@@ -6,6 +6,7 @@ import { cents, clean, isNegative, isNegativeMoney } from '../lib/num.js';
 import { dayChangeSummary, performanceSummary } from '../lib/day-change.js';
 import { oneOf, toDate, toNumber, toTicker } from '../lib/validate.js';
 import { createMarketPrices, marketKey } from '../prices/index.js';
+import { parseRange } from '../prices/ranges.js';
 import { sparklines } from '../lib/sparkline.js';
 
 export const CURRENCIES = ['USD', 'ARS'];
@@ -200,12 +201,14 @@ export function createCedearService(db, priceProvider, { fx = null, log, repairs
     };
   }
 
-  // Today's session of one ticker (or the last one, with the market closed).
-  async function getIntraday(tickerInput) {
+  // Price of one ticker over a range; 1D is today's session (or the last
+  // one, with the market closed).
+  async function getPriceHistory(tickerInput, query) {
     const ticker = toTicker(tickerInput, 'el ticker');
+    const { range, dates } = parseRange(query);
     try {
-      const chart = await prices.getIntraday(ticker);
-      return { ticker, ...(chart ?? { currency: null, points: [], session: null }) };
+      const chart = await prices.getHistory(ticker, range, dates);
+      return { ticker, range, ...(chart ?? { currency: null, points: [], session: null }) };
     } catch (err) {
       throw new UserError(`No se pudo obtener el gráfico de ${ticker} desde ${prices.name} (${err.message}).`, 503);
     }
@@ -213,7 +216,7 @@ export function createCedearService(db, priceProvider, { fx = null, log, repairs
 
   return {
     getPortfolio: valuate,
-    getIntraday,
+    getPriceHistory,
 
     // Today's session trend of every open position, for the holdings list.
     getSparklines() {

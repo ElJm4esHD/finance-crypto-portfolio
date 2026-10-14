@@ -5,6 +5,7 @@ import { clean, isNegative, EPSILON } from '../lib/num.js';
 import { dayChangeSummary, performanceSummary } from '../lib/day-change.js';
 import { toDateTime, toNumber, toTicker } from '../lib/validate.js';
 import { createCryptoPrices } from '../prices/index.js';
+import { parseRange } from '../prices/ranges.js';
 import { sparklines } from '../lib/sparkline.js';
 import { NO_REPAIRS } from '../snapshots/repairs.js';
 
@@ -199,12 +200,13 @@ export function createCryptoService(db, priceProvider, { log, repairs = NO_REPAI
       return sparklines(assets, { getQuotes: fetchQuotes, getIntraday: prices.getIntraday });
     },
 
-    // Price of the last 24 h, for the chart of one coin.
-    async getIntraday(assetInput) {
+    // Price of one coin over a range (?range=1D|5D|1M|6M|YTD|1A|Todo|custom).
+    async getPriceHistory(assetInput, query) {
       const asset = toTicker(assetInput, 'la moneda');
+      const { range, dates } = parseRange(query);
       try {
-        const chart = await prices.getIntraday(asset);
-        return { asset, ...(chart ?? { currency: 'USDT', points: [] }) };
+        const chart = await prices.getHistory(asset, range, dates);
+        return { asset, range, ...(chart ?? { currency: 'USDT', points: [] }) };
       } catch (err) {
         throw new UserError(`No se pudo obtener el gráfico de ${asset} desde ${prices.name} (${err.message}).`, 503);
       }

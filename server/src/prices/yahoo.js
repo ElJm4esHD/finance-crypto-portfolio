@@ -1,4 +1,15 @@
 import { fetchJson } from './http.js';
+import { rangeWindow, spanDays } from './ranges.js';
+
+// Yahoo's own ranges for the presets; custom dates use period1/period2.
+const PRESETS = {
+  '5D': 'range=5d&interval=30m',
+  '1M': 'range=1mo&interval=1d',
+  '6M': 'range=6mo&interval=1d',
+  YTD: 'range=ytd&interval=1d',
+  '1A': 'range=1y&interval=1d',
+  Todo: 'range=max&interval=1wk',
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Yahoo Finance — endpoint NO OFICIAL (Yahoo no tiene API pública desde 2017).
@@ -63,6 +74,26 @@ export const yahooProvider = {
       closes: (result.timestamp ?? [])
         .map((t, i) => ({ date: new Date((t + offset) * 1000).toISOString().slice(0, 10), close: closes[i] }))
         .filter((c) => c.close != null),
+    };
+  },
+
+  // Price over a range (see ranges.js). 1D is the day's session.
+  async getHistory(ticker, range, dates) {
+    if (range === '1D') return this.getIntraday(ticker);
+    let params = PRESETS[range];
+    if (!params) {
+      const window = rangeWindow(range, dates);
+      const days = spanDays(window);
+      const recent = Date.now() - window.start < 59 * 86400_000; // intraday bars only exist for ~60 days
+      const interval = days <= 7 && recent ? '30m' : days <= 1100 ? '1d' : '1wk';
+      params = `period1=${Math.floor(window.start / 1000)}&period2=${Math.floor(window.end / 1000)}&interval=${interval}`;
+    }
+    const result = await chart(ticker, params);
+    if (!result) return null;
+    const closes = result.indicators?.quote?.[0]?.close ?? [];
+    return {
+      currency: result.meta.currency ?? null,
+      points: (result.timestamp ?? []).map((t, i) => ({ t: t * 1000, value: closes[i] })).filter((p) => p.value != null),
     };
   },
 

@@ -1,27 +1,26 @@
 import { useState } from 'preact/hooks';
 import { fmtChartDate, fmtDate, fmtLongDate, fmtMoney, fmtSignedMoney } from '../format.js';
 import { useApi } from '../hooks.js';
-import { ErrorMessage, Icon, Loading, SignedChange } from './ui.jsx';
+import { ErrorMessage, Loading, SignedChange } from './ui.jsx';
 import { LineChart } from './LineChart.jsx';
+import { RangePicker, rangeById } from './RangePicker.jsx';
 
 const DAY = 86400_000;
 const toTime = (iso) => Date.parse(`${iso}T00:00:00Z`);
 const toIso = (t) => new Date(t).toISOString().slice(0, 10);
 
-// Time ranges, like trading apps. `since(last)` gives the first date shown,
-// counted back from the last snapshot; null = the whole history. With little
-// history a long range simply shows what there is.
+// First date each range shows, counted back from the last snapshot (null =
+// the whole history). With little history a long range shows what there is.
 const back = (days) => (last) => toIso(toTime(last) - days * DAY);
-const RANGES = [
-  { id: '1D', label: '1 día', since: back(1) },
-  { id: '5D', label: '5 días', since: back(5) },
-  { id: '1M', label: '1 mes', since: back(30) },
-  { id: '6M', label: '6 meses', since: back(182) },
-  { id: 'YTD', label: 'en el año', since: (last) => `${last.slice(0, 4)}-01-01` },
-  { id: '1A', label: '1 año', since: back(365) },
-  { id: 'Todo', label: 'total (desde que invertiste)', since: () => null },
-  { id: 'custom', short: 'Personalizado', label: 'en el período' },
-];
+const SINCE = {
+  '1D': back(1),
+  '5D': back(5),
+  '1M': back(30),
+  '6M': back(182),
+  YTD: (last) => `${last.slice(0, 4)}-01-01`,
+  '1A': back(365),
+  Todo: () => null,
+};
 
 // Long histories are drawn with the last value of each week.
 function weekly(points) {
@@ -60,10 +59,10 @@ export function GrowthPanel({ section, currency }) {
     );
   }
 
-  const range = RANGES.find((r) => r.id === rangeId) ?? RANGES[2];
+  const range = rangeById(rangeId);
   const firstDate = all[0].date;
   const lastDate = all.at(-1).date;
-  const from = range.id === 'custom' ? custom.from || firstDate : range.since(lastDate);
+  const from = range.id === 'custom' ? custom.from || firstDate : SINCE[range.id](lastDate);
   const to = range.id === 'custom' ? custom.to || lastDate : lastDate;
   const inRange = all.filter((p) => (!from || p.date >= from) && p.date <= to);
   const points = inRange.length > 400 ? weekly(inRange) : inRange;
@@ -90,42 +89,14 @@ export function GrowthPanel({ section, currency }) {
   const view = spanDays <= 190 ? 'daily' : 'monthly';
 
   const picker = (
-    <div class="range-picker">
-      <div class="ranges" role="radiogroup" aria-label="Período">
-        {RANGES.map((r) => (
-          <button
-            type="button"
-            role="radio"
-            aria-checked={r === range}
-            aria-label={r.short}
-            title={r.short}
-            class={`${r === range ? 'active' : ''} ${r.short ? 'range-custom' : ''}`}
-            onClick={() => setRangeId(r.id)}
-          >
-            {r.short ? (
-              <>
-                <span class="range-text">{r.short}</span>
-                <Icon name="calendar" />
-              </>
-            ) : (
-              r.id
-            )}
-          </button>
-        ))}
-      </div>
-      {range.id === 'custom' && (
-        <div class="custom-range">
-          <label>
-            <span>Desde</span>
-            <input type="date" value={custom.from || firstDate} min={firstDate} max={lastDate} onInput={(e) => setCustom((c) => ({ ...c, from: e.currentTarget.value }))} />
-          </label>
-          <label>
-            <span>Hasta</span>
-            <input type="date" value={custom.to || lastDate} min={firstDate} max={lastDate} onInput={(e) => setCustom((c) => ({ ...c, to: e.currentTarget.value }))} />
-          </label>
-        </div>
-      )}
-    </div>
+    <RangePicker
+      value={range.id}
+      onChange={setRangeId}
+      custom={{ from: custom.from || firstDate, to: custom.to || lastDate }}
+      onCustom={setCustom}
+      min={firstDate}
+      max={lastDate}
+    />
   );
 
   if (points.length === 0) {
@@ -148,7 +119,7 @@ export function GrowthPanel({ section, currency }) {
       <div class="growth-head">
         <div class="growth-figures">
           <div class="growth-figure">
-            <span>Rendimiento {range.label}</span>
+            <span>Rendimiento {isTotal ? 'total (desde que invertiste)' : range.label}</span>
             <strong>
               <SignedChange change={performance} pct={performancePct} currency={unit} />
             </strong>

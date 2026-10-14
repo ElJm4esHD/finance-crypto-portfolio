@@ -49,7 +49,7 @@ export function AssetList({ kind, rows }) {
                     </div>
                   ))}
                 </dl>
-                {!r.dimmed && <IntradayChart kind={kind} symbol={r.symbol} />}
+                {!r.dimmed && <IntradayChart kind={kind} symbol={r.symbol} dayChangePct={r.dayChangePct} />}
                 {r.actions && <div class="asset-detail-actions">{r.actions}</div>}
               </div>
             )}

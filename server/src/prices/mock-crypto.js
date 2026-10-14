@@ -1,4 +1,5 @@
 import { dailyDrift, eachDate, fakeIntraday, hash, yesterday } from './mock-util.js';
+import { rangeWindow } from './ranges.js';
 
 // MOCK — precios inventados para poder usar la app sin API. Reemplazar por ./binance.js.
 const STABLECOINS = new Set(['USDT', 'USDC', 'DAI', 'FDUSD', 'TUSD', 'BUSD', 'USDP', 'PYUSD']);
@@ -29,8 +30,14 @@ export const mockCryptoProvider = {
     return { currency: 'USDT', closes: eachDate(from, to).map((date) => ({ date, close: close(date) })) };
   },
   async getIntraday(asset) {
+    return this.getHistory(asset, '1D');
+  },
+  async getHistory(asset, range, dates) {
     if (STABLECOINS.has(asset)) return null;
-    const now = Date.now();
-    return { currency: 'USDT', points: fakeIntraday(asset, now - 86400000, now, priceOf(asset)) };
+    const { start, end } = rangeWindow(range, dates);
+    const from = start ?? end - 3 * 365 * 86400000;
+    if (end - from <= 2 * 86400000) return { currency: 'USDT', points: fakeIntraday(asset, from, end, priceOf(asset)) };
+    const days = eachDate(new Date(from).toISOString().slice(0, 10), new Date(end).toISOString().slice(0, 10));
+    return { currency: 'USDT', points: days.map((d) => ({ t: Date.parse(`${d}T12:00:00Z`), value: priceOf(asset, new Date(`${d}T12:00:00Z`)) })) };
   },
 };

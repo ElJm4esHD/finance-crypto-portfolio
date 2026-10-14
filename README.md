@@ -99,7 +99,7 @@ Para restaurar: `docker compose down`, reemplazá `portfolio.db` por un backup (
 - Si el servidor estaba apagado a esa hora, al arrancar guarda el del día. Con precios desactualizados (API caída) no se guarda nada.
 - CEDEARs/ETF guarda una serie por moneda (ARS y USD, cada una con posiciones + disponible); el gráfico las suma en la moneda elegida.
 - Arriba del gráfico, selector de rango: **1D, 5D, 1M, 6M, YTD, 1A, Todo** y **Personalizado** (desde/hasta; en el celular es el ícono de calendario). Con poco historial, los rangos largos muestran lo que hay.
-- Todo se mide desde el primer punto del rango: ahí el rendimiento es 0, y después es el cambio de valor menos lo que entró o salió de plata. Abajo del selector: rendimiento del período, aportes netos e invertido.
+- **Rendimiento** es siempre valor − invertido (los aportes y retiros no cuentan). En **Todo** se muestra tal cual, y es el mismo número que "Rendimiento total" del resumen (el último punto del gráfico es el valor de hoy, actualizado al pedirlo). En los demás rangos se muestra cuánto cambió ese rendimiento dentro del rango (0 en su primer punto).
 - **El historial arrancó de nuevo el 12/10/2026** (corrección única `data_fix_2026_10_growth_reset`): el anterior tenía datos de prueba. Si una cartera no tiene historial (nueva o recién reseteada), el servidor guarda el primer punto apenas arranca, sin esperar al horario del día.
 
 ## Precios y dólar MEP
@@ -115,7 +115,8 @@ Todo el acceso a precios pasa por **`server/src/prices/`**; el resto de la app n
 - **Yahoo Finance no tiene API oficial**: el endpoint puede cambiar o dejar de andar sin aviso. Está aislado en `server/src/prices/yahoo.js`; para reemplazarlo se escribe otro proveedor con el mismo contrato, se registra en `MARKET_PROVIDERS` y se elige con `MARKET_PRICE_PROVIDER`.
 - Si una posición tiene precio en otra moneda (ej. `SPY` cargado en pesos), se convierte con el MEP.
 - **Si una API falla** (timeout, error, límite de pedidos) la app sigue andando: muestra el último valor guardado con la etiqueta "Precio desactualizado desde …" y reintenta al minuto. Cada fuente falla por separado. Los últimos precios se guardan en la base (`price_cache`), así que también sobreviven a un reinicio.
-- **Gráfico intradía**: tocando una moneda se ven las últimas 24 h (velas de 5 minutos de Binance); tocando un ticker, la sesión del día (o la última, con el mercado cerrado). La misma serie, resumida, es la tendencia de cada fila de la lista.
+- **Gráfico de precio de cada activo**: al tocar una fila, con el mismo selector de rangos que el crecimiento (1D, 5D, 1M, 6M, YTD, 1A, Todo, Personalizado). 1D son las últimas 24 h en cripto (velas de 5 minutos) y la sesión del día en CEDEARs/ETF (o la última, con el mercado cerrado); los rangos largos usan velas de 30 minutos a semanales (Binance) o los rangos de Yahoo (`5d` … `max`). Se cachean en memoria (1D como los precios, 5D 15 minutos, el resto 1 hora).
+- **Tendencia de cada fila**: arranca en el cierre anterior (hace 24 h en cripto), pasa por los cierres del día y termina en el precio actual. La línea, su color y el % de al lado salen de esa misma serie, así que nunca se contradicen.
 
 ## Exportar a CSV
 

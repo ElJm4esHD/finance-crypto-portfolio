@@ -1,4 +1,5 @@
 import { fetchJson } from './http.js';
+import { rangeWindow, spanDays } from './ranges.js';
 
 // Binance public API (no key, read only). Prices in USDT; USDT itself is 1:1.
 const BASE = 'https://api.binance.com/api/v3';
@@ -51,15 +52,27 @@ export const binanceProvider = {
     }
   },
 
-  // Last 24 h in 5-minute candles (close price). null → no chart for it.
-  async getIntraday(asset) {
+  // Price over a range (see ranges.js), as candle closes: 5-minute candles
+  // for a day, up to weekly ones for the whole history (≤ 1000 points).
+  // null → Binance does not list it (or USDT, always 1).
+  async getHistory(asset, range, dates) {
     if (asset === 'USDT') return null;
+    const window = rangeWindow(range, dates);
+    const days = spanDays(window);
+    const interval = days <= 1.5 ? '5m' : days <= 7 ? '30m' : days <= 45 ? '4h' : days <= 1000 ? '1d' : '1w';
+    const span = window.start === null ? '' : `&startTime=${window.start}&endTime=${window.end}`;
     try {
-      const klines = await fetchJson(`${BASE}/klines?symbol=${pair(asset)}&interval=5m&limit=288`);
-      return { currency: 'USDT', points: klines.map((k) => ({ t: k[6] + 1, value: Number(k[4]) })) };
+      const klines = await fetchJson(`${BASE}/klines?symbol=${pair(asset)}&interval=${interval}&limit=1000${span}`);
+      const now = Date.now();
+      return { currency: 'USDT', points: klines.map((k) => ({ t: Math.min(k[6] + 1, now), value: Number(k[4]) })) };
     } catch (err) {
       if (isUnknownSymbol(err)) return null;
       throw err;
     }
+  },
+
+  // Last 24 h in 5-minute candles (sparklines and the 1D chart).
+  getIntraday(asset) {
+    return this.getHistory(asset, '1D');
   },
 };

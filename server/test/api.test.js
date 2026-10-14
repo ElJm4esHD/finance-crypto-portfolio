@@ -151,6 +151,15 @@ test('intraday charts and the dólar MEP over HTTP', async (t) => {
   assert.equal(Math.sign(v.at(-1) - v[0]), Math.sign(lines.BTC.changePct));
   assert.equal(lines.BTC.changePct, h.dayChangePct);
 
+  const month = (await app.inject('/api/crypto/chart/BTC?range=1M')).json();
+  assert.equal(month.range, '1M');
+  assert.ok(month.points.length >= 30);
+  const custom = (await app.inject('/api/crypto/chart/BTC?range=custom&from=2026-01-01&to=2026-01-10')).json();
+  assert.equal(custom.points.length, 10);
+  assert.equal((await app.inject('/api/crypto/chart/BTC?range=2X')).statusCode, 400);
+  assert.equal((await app.inject('/api/cedears/chart/SPY?range=custom&from=2026-02-01&to=2026-01-01')).statusCode, 400);
+  assert.ok((await app.inject('/api/cedears/chart/SPY?range=YTD')).json().points.length > 0);
+
   const spy = await app.inject('/api/cedears/chart/SPY');
   assert.equal(spy.statusCode, 200);
   assert.ok(spy.json().session.end > spy.json().session.start);

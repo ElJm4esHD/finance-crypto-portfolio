@@ -508,3 +508,7 @@ input[type='date'], input[type='datetime-local'] { color-scheme: dark; }
   .list-row.has-badge .icon-btn { grid-area: del; }
   .list-row.has-badge .list-main { grid-area: main; }
 }
+
+/* Price chart of one asset (open row): range picker above it. */
+.price-chart { display: flex; flex-direction: column; gap: 8px; }
+.asset-detail .ranges { background: var(--surface); }

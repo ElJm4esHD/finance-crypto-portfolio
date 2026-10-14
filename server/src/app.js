@@ -64,7 +64,7 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
   // ── Cripto ──────────────────────────────────────────────
   app.get('/api/crypto/holdings', async () => ({ ...(await crypto.getHoldings()), fx: fx.get() }));
 
-  app.get('/api/crypto/chart/:asset', async (req) => crypto.getIntraday(req.params.asset));
+  app.get('/api/crypto/chart/:asset', async (req) => crypto.getPriceHistory(req.params.asset, req.query));
 
   app.get('/api/crypto/sparklines', async () => crypto.getSparklines());
 
@@ -149,7 +149,7 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
   // ── CEDEARs / ETF ───────────────────────────────────────
   app.get('/api/cedears/portfolio', async () => ({ ...(await cedears.getPortfolio()), fx: fx.get() }));
 
-  app.get('/api/cedears/chart/:ticker', async (req) => cedears.getIntraday(req.params.ticker));
+  app.get('/api/cedears/chart/:ticker', async (req) => cedears.getPriceHistory(req.params.ticker, req.query));
 
   app.get('/api/cedears/sparklines', async () => cedears.getSparklines());
 
