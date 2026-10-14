@@ -132,8 +132,15 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
 
   app.put('/api/crypto/goal', async (req) => ({ goal: crypto.setGoal(req.body?.amount ?? null) }));
 
+  // The chart's last point is today's value refreshed right now (cached
+  // prices), so it is the same value and performance the summary shows.
+  const liveGrowth = async (portfolio, currency) => {
+    await snapshots.capture(portfolio);
+    return growth.get(portfolio, currency);
+  };
+
   app.get('/api/crypto/growth', async (req) => ({
-    ...growth.get('crypto', growthCurrency(req.query.currency, 'USD')),
+    ...(await liveGrowth('crypto', growthCurrency(req.query.currency, 'USD'))),
     goal: crypto.getGoal(),
   }));
 
@@ -192,7 +199,7 @@ export function buildApp({ db, cryptoPrices, marketPrices, fx = NO_FX, publicDir
     return reply.code(204).send();
   });
 
-  app.get('/api/cedears/growth', async (req) => growth.get('cedears', growthCurrency(req.query.currency, 'ARS')));
+  app.get('/api/cedears/growth', async (req) => liveGrowth('cedears', growthCurrency(req.query.currency, 'ARS')));
 
   app.get('/api/cedears/export.csv', async (req, reply) => sendCsv(reply, 'cedears', await cedearsCsv(cedears)));
 

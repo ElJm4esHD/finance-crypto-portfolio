@@ -98,11 +98,13 @@ export function CryptoHoldings() {
               <span class="stat-value">{fmtMoney(conv(data.invested), unit)}</span>
             </div>
             <div class="stat">
-              <span class="stat-label">Rendimiento</span>
+              <span class="stat-label" title="Valor actual menos lo invertido: lo mismo que el gráfico en Todo">
+                Rendimiento total
+              </span>
               <span class="stat-value">
                 <SignedChange change={conv(data.performance)} currency={unit} />
                 {data.performancePct !== null && (
-                  <span class={`sub change-value ${data.performance >= 0 ? 'up' : 'down'}`}>{fmtPct(data.performancePct, { signed: true })}</span>
+                  <span class={`sub change-value ${data.performance >= 0 ? 'up' : 'down'}`}>{fmtPct(data.performancePct, { signed: true, digits: 2 })}</span>
                 )}
               </span>
             </div>

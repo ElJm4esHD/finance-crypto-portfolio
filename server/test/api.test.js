@@ -169,3 +169,22 @@ test('crypto contributions over HTTP', async (t) => {
   assert.equal((await app.inject('/api/crypto/flows')).json().length, 1);
   assert.equal((await app.inject('/api/cedears/growth?currency=USD')).json().currency, 'USD');
 });
+
+test('the growth chart ends at the same value and performance as the summary', async (t) => {
+  const fx = { get: () => ({ rate: 1500 }), history: () => [] };
+  const { app } = buildApp({ db: openDb(':memory:'), cryptoPrices: mockCryptoProvider, marketPrices: mockMarketProvider, fx });
+  t.after(() => app.close());
+  await app.inject({ method: 'POST', url: '/api/crypto/flows', payload: { type: 'deposit', asset: 'BTC', amount: 0.01, executedAt: '2026-10-01T09:00' } });
+  await app.inject({ method: 'POST', url: '/api/cedears/cash-movements', payload: { type: 'deposit', currency: 'USD', amount: 1000, date: '2026-10-01' } });
+  await app.inject({ method: 'POST', url: '/api/cedears/operations', payload: { type: 'buy', ticker: 'SPY', quantity: 1, price: 700, currency: 'USD', date: '2026-10-01' } });
+
+  const h = (await app.inject('/api/crypto/holdings')).json();
+  const last = (await app.inject('/api/crypto/growth?currency=USD')).json().points.at(-1);
+  assert.equal(last.value, h.total);
+  assert.equal(last.value - last.invested, h.performance);
+
+  const p = (await app.inject('/api/cedears/portfolio')).json();
+  const g = (await app.inject('/api/cedears/growth?currency=USD')).json().points.at(-1);
+  assert.equal(g.value, p.totals.USD.total);
+  assert.equal(g.invested, p.totals.USD.invested);
+});

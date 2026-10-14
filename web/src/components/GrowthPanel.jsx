@@ -19,7 +19,7 @@ const RANGES = [
   { id: '6M', label: '6 meses', since: back(182) },
   { id: 'YTD', label: 'en el año', since: (last) => `${last.slice(0, 4)}-01-01` },
   { id: '1A', label: '1 año', since: back(365) },
-  { id: 'Todo', label: 'total', since: () => null },
+  { id: 'Todo', label: 'total (desde que invertiste)', since: () => null },
   { id: 'custom', short: 'Personalizado', label: 'en el período' },
 ];
 
@@ -68,15 +68,20 @@ export function GrowthPanel({ section, currency }) {
   const inRange = all.filter((p) => (!from || p.date >= from) && p.date <= to);
   const points = inRange.length > 400 ? weekly(inRange) : inRange;
 
-  // Everything is measured from the first point of the range: there the
-  // performance is 0, and later it is the change in value minus the money
-  // put in or taken out since then.
+  // One definition of performance for the whole app, the same as the
+  // summary: value − money invested (deposits/withdrawals never count).
+  // "Todo" shows it as is, so it equals the summary's total performance
+  // (the last point is today's live value). Any other range shows how much
+  // that same performance changed within the range, so it is 0 at the
+  // range's first point.
   const first = points[0];
   const last = points.at(-1);
-  const performanceAt = (p) => p.value - first.value - (p.invested - first.invested);
+  const isTotal = range.id === 'Todo';
+  const total = (p) => p.value - p.invested;
+  const performanceAt = (p) => (isTotal ? total(p) : total(p) - total(first));
   const contributed = last ? last.invested - first.invested : 0;
   const performance = last ? performanceAt(last) : 0;
-  const base = first ? first.value + Math.max(contributed, 0) : 0;
+  const base = isTotal ? last?.invested ?? 0 : first ? first.value + Math.max(contributed, 0) : 0;
   const performancePct = base > 0 ? (performance / base) * 100 : null;
   const tone = performance > 0 ? 'up' : performance < 0 ? 'down' : '';
   const flows = last ? data.flows.filter((f) => f.date >= first.date && f.date <= last.date) : [];
@@ -188,7 +193,7 @@ export function GrowthPanel({ section, currency }) {
       />
 
       {all.length === 1 && (
-        <p class="fx-note">Primer día del historial: este es el punto de partida (rendimiento 0). Se suma un punto por día.</p>
+        <p class="fx-note">Primer día del historial: el gráfico suma un punto por día.</p>
       )}
 
       <div class="legend">

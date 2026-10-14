@@ -140,11 +140,13 @@ export function CedearPortfolio({ onNewOperation }) {
                   <span class="stat-value">{fmtMoney(f.invested, f.currency)}</span>
                 </div>
                 <div class="stat">
-                  <span class="stat-label">Rendimiento{figures.length > 1 && ` en ${f.currency}`}</span>
+                  <span class="stat-label" title="Valor actual menos lo invertido: lo mismo que el gráfico en Todo">
+                    Rendimiento total{figures.length > 1 && ` en ${f.currency}`}
+                  </span>
                   <span class="stat-value">
                     <SignedChange change={f.performance} currency={f.currency} />
                     {f.performancePct !== null && (
-                      <span class={`sub change-value ${f.performance >= 0 ? 'up' : 'down'}`}>{fmtPct(f.performancePct, { signed: true })}</span>
+                      <span class={`sub change-value ${f.performance >= 0 ? 'up' : 'down'}`}>{fmtPct(f.performancePct, { signed: true, digits: 2 })}</span>
                     )}
                   </span>
                 </div>
