@@ -196,7 +196,7 @@ export function createCryptoService(db, priceProvider, { log, repairs = NO_REPAI
     // Last 24 h trend of every coin held, for the holdings list.
     getSparklines() {
       const assets = q.holdings.all().filter((r) => r.amount > 0 && r.asset !== 'USDT').map((r) => r.asset);
-      return sparklines(assets, prices.getIntraday);
+      return sparklines(assets, { getQuotes: fetchQuotes, getIntraday: prices.getIntraday });
     },
 
     // Price of the last 24 h, for the chart of one coin.

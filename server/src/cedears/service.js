@@ -218,8 +218,11 @@ export function createCedearService(db, priceProvider, { fx = null, log, repairs
     // Today's session trend of every open position, for the holdings list.
     getSparklines() {
       const { positions } = currentState();
-      const tickers = [...new Set([...positions.values()].filter((p) => p.quantity > 0).map((p) => p.ticker))];
-      return sparklines(tickers, prices.getIntraday);
+      const open = [...positions.values()].filter((p) => p.quantity > 0);
+      const items = new Map(open.map((p) => [p.ticker, { ticker: p.ticker, currency: p.currency, avgPrice: p.avgPrice }]));
+      // Quotes by ticker in the ticker's own currency, as the holdings get them.
+      const getQuotes = (tickers) => prices.getQuotes(tickers.map((t) => items.get(t)));
+      return sparklines([...items.keys()], { getQuotes, getIntraday: prices.getIntraday });
     },
 
     listOperations() {

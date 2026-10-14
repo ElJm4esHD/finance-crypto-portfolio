@@ -37,21 +37,26 @@ export function CryptoHoldings() {
 
   const pie = distribution(withBalance.filter((h) => h.value !== null).map((h) => ({ symbol: h.asset, value: conv(h.value) })));
 
+  // The day trend of each coin: line, color and % come from the same series
+  // (USDT is flat). Until it loads, the % of the quotes is shown.
+  const trendOf = (h) => (h.asset === 'USDT' ? { values: [1, 1], changePct: 0 } : sparks?.[h.asset]);
+  const dayPct = (h) => (h.amount > 0 ? trendOf(h)?.changePct ?? h.dayChangePct : null);
+
   const rows = (showEmpty ? [...withBalance, ...empty] : withBalance).map((h) => ({
     key: h.asset,
     color: pie.colors.get(h.asset),
     symbol: h.asset,
     sub: `${fmtAmount(h.amount)} · ${h.value === null ? (h.amount > 0 ? 'sin precio' : 'sin saldo') : fmtMoney(conv(h.value), unit)}`,
     price: h.amount > 0 ? fmtPrice(conv(h.price), unit) : '—',
-    dayChangePct: h.amount > 0 ? h.dayChangePct : null,
-    spark: h.asset === 'USDT' ? [1, 1] : sparks?.[h.asset],
+    dayChangePct: dayPct(h),
+    spark: trendOf(h)?.values,
     dimmed: h.amount === 0,
     detail: [
       ['Cantidad', fmtAmount(h.amount)],
       ['Precio', h.amount > 0 ? fmtPrice(conv(h.price), unit) : '—'],
       ['Valor', h.value === null ? '—' : fmtMoney(conv(h.value), unit)],
       ['Peso', fmtPct(h.weight)],
-      ['Hoy', h.dayChangePct === null ? '—' : fmtPct(h.dayChangePct, { signed: true, digits: 2 })],
+      ['Hoy', dayPct(h) === null ? '—' : fmtPct(dayPct(h), { signed: true, digits: 2 })],
     ],
     actions: (
       <button type="button" class="btn btn-secondary btn-sm" onClick={() => setEditing(h)}>

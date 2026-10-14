@@ -143,7 +143,13 @@ test('intraday charts and the dólar MEP over HTTP', async (t) => {
   await app.inject({ method: 'PUT', url: '/api/crypto/holdings', payload: { asset: 'BTC', amount: 1 } });
   const lines = (await app.inject('/api/crypto/sparklines')).json();
   assert.deepEqual(Object.keys(lines), ['BTC']);
-  assert.equal(lines.BTC.length, 48);
+  assert.equal(lines.BTC.values.length, 48);
+  // Line, color and % come from the same series: reference → current price.
+  const h = (await app.inject('/api/crypto/holdings')).json().holdings.find((x) => x.asset === 'BTC');
+  const v = lines.BTC.values;
+  assert.equal(v.at(-1), h.price);
+  assert.equal(Math.sign(v.at(-1) - v[0]), Math.sign(lines.BTC.changePct));
+  assert.equal(lines.BTC.changePct, h.dayChangePct);
 
   const spy = await app.inject('/api/cedears/chart/SPY');
   assert.equal(spy.statusCode, 200);

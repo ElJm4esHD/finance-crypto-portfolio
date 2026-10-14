@@ -81,8 +81,9 @@ export function CedearPortfolio({ onNewOperation }) {
       label: inBoth(p.ticker) ? `${p.ticker} · ${p.currency}` : p.ticker,
       sub: isClosed ? 'Cerrada' : `${fmtAmount(p.quantity)} · ${fmtMoney(value, shownIn(p.currency))}${p.value === null ? '*' : ''}`,
       price: isClosed ? '—' : p.price === null ? 'Sin precio' : fmtPrice(p.price, p.currency),
-      dayChangePct: isClosed ? null : p.dayChangePct,
-      spark: sparks?.[p.ticker],
+      // Line, color and % from the same series (the % of the quotes until it loads).
+      dayChangePct: isClosed ? null : sparks?.[p.ticker]?.changePct ?? p.dayChangePct,
+      spark: sparks?.[p.ticker]?.values,
       dimmed: isClosed,
       detail: [
         ['Cantidad', fmtAmount(p.quantity)],
